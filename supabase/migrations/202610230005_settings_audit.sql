@@ -1,0 +1,1 @@
+create trigger audit_settings after update on public.application_settings for each row execute function private.audit();

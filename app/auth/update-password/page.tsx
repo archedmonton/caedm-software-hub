@@ -1,11 +1,4 @@
-import { UpdatePasswordForm } from "@/components/update-password-form";
-
+import { AuthForm } from "@/components/hub/auth-form";
 export default function Page() {
-  return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-sm">
-        <UpdatePasswordForm />
-      </div>
-    </div>
-  );
+  return <AuthForm mode="update" />;
 }

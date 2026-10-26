@@ -40,3 +40,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/test-results/
+/playwright-report/
+/.artifacts/
+/supabase/.temp/
+/supabase/.branches/
+
+/.next-local/
+
+# Local Supabase Studio query history
+/supabase/snippets/
