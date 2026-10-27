@@ -37,10 +37,16 @@ function InvitationPanel({ token }: { token: string | null }) {
   return (
     <main className="standalone">
       <section className="panel w-full max-w-lg p-8">
-        <Link className="brand mb-8" href="/login">
-          <Church size={28} />
+        <Link
+          className="mb-8 flex items-center gap-3 text-[23px] leading-none font-semibold tracking-wide text-foreground"
+          href="/login"
+        >
+          <Church size={28} className="text-primary shrink-0" />
           <span>
-            CAEDM<span className="brand-caption">SOFTWARE HUB</span>
+            CAEDM
+            <span className="mt-2 block text-[8px] font-medium tracking-[2.5px] text-muted-foreground">
+              SOFTWARE HUB
+            </span>
           </span>
         </Link>
         <ShieldCheck className="text-primary mb-5" size={32} />
