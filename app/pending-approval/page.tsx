@@ -1,3 +1,5 @@
+import { Brand } from "@/components/hub/brand";
+import { HelpCenter } from "@/components/hub/help-center";
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { session } from "@/lib/auth";
@@ -8,6 +10,10 @@ export default async function Pending() {
   return (
     <main className="standalone">
       <div className="panel max-w-lg p-10">
+        <div className="standalone-brand">
+          <Brand />
+          <HelpCenter />
+        </div>
         <ShieldCheck className="text-primary mb-5" size={32} />
         <span className="eyebrow">ACCOUNT ACCESS</span>
         <h1>

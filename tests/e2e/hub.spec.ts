@@ -684,3 +684,153 @@ test("resending invalidates old invitation links and revocation blocks the lates
     await context.close();
   }
 });
+
+test("CAEDM logo and searchable public help are accessible on desktop and mobile", async ({
+  page,
+}) => {
+  await page.goto("/login");
+  const logo = page.getByRole("img", {
+    name: "The Catholic Archdiocese of Edmonton",
+  });
+  await expect(logo).toBeVisible();
+  await expect
+    .poll(() => logo.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+  const trigger = page.getByRole("button", { name: "Open help", exact: true });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "How can we help?" });
+  await expect(dialog).toBeVisible();
+  const search = dialog.getByRole("searchbox", { name: "Search help" });
+  await expect(search).toBeFocused();
+  await expect(
+    dialog.getByRole("button", { name: "Administration", exact: true }),
+  ).toHaveCount(0);
+  await expect(dialog.locator("details[open] summary")).toContainText(
+    "How do I sign in?",
+  );
+  await search.fill("no-matching-help-topic-12345");
+  await expect(
+    dialog.getByRole("heading", { name: "No matching guidance" }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Clear search and topics" }).click();
+  await expect(search).toHaveValue("");
+  await search.fill("forgotten password");
+  await expect(dialog.locator("summary")).toContainText([
+    "How do I reset a forgotten password?",
+  ]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const bounds = await dialog.boundingBox();
+  expect(bounds!.width).toBeLessThanOrEqual(390);
+  expect(await dialog.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(
+    false,
+  );
+  await page.screenshot({
+    path: ".artifacts/branding-help-login-mobile.png",
+    fullPage: false,
+    animations: "disabled",
+  });
+  await dialog.getByRole("button", { name: "Done", exact: true }).focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    dialog.getByRole("button", { name: "Close help", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await expect(search).toHaveValue("");
+  await dialog.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > window.innerWidth,
+    ),
+  ).toBe(false);
+  await page.screenshot({
+    path: ".artifacts/branding-login-mobile.png",
+    fullPage: false,
+    animations: "disabled",
+  });
+});
+
+test("workspace help follows the current page and shows guidance for each role", async ({
+  page,
+}) => {
+  await login(page, "admin");
+  await page.goto("/team");
+  await expect(
+    page.getByRole("img", { name: "The Catholic Archdiocese of Edmonton" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Open help", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "How can we help?" });
+  await expect(dialog.locator("details[open] summary")).toContainText(
+    "How do I invite an employee",
+  );
+  await dialog
+    .getByRole("button", { name: "Administration", exact: true })
+    .click();
+  await dialog.getByRole("searchbox", { name: "Search help" }).fill("resend");
+  await expect(
+    dialog.getByText("How do I resend or revoke an invitation?", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: ".artifacts/branding-help-admin-desktop.png",
+    fullPage: false,
+    animations: "disabled",
+  });
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await login(page, "finance");
+  await page.goto("/finance");
+  await page.getByRole("button", { name: "Open help", exact: true }).click();
+  await expect(dialog.locator("details[open] summary")).toContainText(
+    "How do I record and correct an expense?",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Finance", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Administration", exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await login(page, "staff");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Open help", exact: true }).click();
+  await expect(dialog.locator("details[open] summary")).toContainText(
+    "What do the dashboard numbers mean?",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Finance", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: "Administration", exact: true }),
+  ).toHaveCount(0);
+  await dialog
+    .getByRole("searchbox", { name: "Search help" })
+    .fill("manage permission");
+  await expect(
+    dialog.getByText("Why can I see a record but not change it?", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: ".artifacts/branding-help-staff-mobile.png",
+    fullPage: false,
+    animations: "disabled",
+  });
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await page.getByRole("button", { name: "Toggle navigation" }).click();
+  await expect(
+    page.getByRole("img", { name: "The Catholic Archdiocese of Edmonton" }),
+  ).toBeVisible();
+  await expect(page.locator(".sidebar")).toBeInViewport({ ratio: 1 });
+  await page.screenshot({
+    path: ".artifacts/branding-navigation-mobile.png",
+    fullPage: false,
+    animations: "disabled",
+  });
+});

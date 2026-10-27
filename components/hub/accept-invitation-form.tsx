@@ -1,12 +1,15 @@
 "use client";
 import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
-import { Church, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   acceptInvitation,
   type InvitationState,
 } from "@/app/invitations/actions";
+
+import { Brand } from "@/components/hub/brand";
+import { HelpCenter } from "@/components/hub/help-center";
 
 export function AcceptInvitationForm() {
   const [token, setToken] = useState<string | null>(null);
@@ -37,18 +40,10 @@ function InvitationPanel({ token }: { token: string | null }) {
   return (
     <main className="standalone">
       <section className="panel w-full max-w-lg p-8">
-        <Link
-          className="mb-8 flex items-center gap-3 text-[23px] leading-none font-semibold tracking-wide text-foreground"
-          href="/login"
-        >
-          <Church size={28} className="text-primary shrink-0" />
-          <span>
-            CAEDM
-            <span className="mt-2 block text-[8px] font-medium tracking-[2.5px] text-muted-foreground">
-              SOFTWARE HUB
-            </span>
-          </span>
-        </Link>
+        <div className="standalone-brand">
+          <Brand />
+          <HelpCenter />
+        </div>
         <ShieldCheck className="text-primary mb-5" size={32} />
         <span className="eyebrow">YOUR INVITATION</span>
         <h1>Set up your account</h1>
@@ -99,7 +94,10 @@ function InvitationPanel({ token }: { token: string | null }) {
                 {state.error}
               </p>
             )}
-            <Button disabled={pending}>
+            <Button
+              disabled={pending}
+              className="w-full h-auto min-h-9 whitespace-normal text-center"
+            >
               {pending
                 ? "Setting up your account..."
                 : "Accept invitation and set password"}

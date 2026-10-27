@@ -2,7 +2,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Church,
   LayoutDashboard,
   Layers3,
   CalendarClock,
@@ -20,6 +19,8 @@ import { useState } from "react";
 import type { Profile } from "@/lib/domain";
 import { financeRole } from "@/lib/domain";
 import { logout } from "@/app/auth/actions";
+import { Brand } from "@/components/hub/brand";
+import { HelpCenter } from "@/components/hub/help-center";
 const navigation = [
   ["Dashboard", "/dashboard", LayoutDashboard],
   ["Software Inventory", "/software", Layers3],
@@ -52,14 +53,9 @@ export function Shell({
         Skip to content
       </a>
       <aside className={`sidebar ${open ? "mobile-open" : ""}`}>
-        <Link href="/dashboard" className="brand">
-          <Church size={28} />
-          <span>
-            CAEDM<span className="brand-caption">SOFTWARE HUB</span>
-          </span>
-        </Link>
+        <Brand href="/dashboard" compact />
         <div className="workspace-label">ARCHDIOCESE WORKSPACE</div>
-        <nav aria-label="Main navigation">
+        <nav id="workspace-navigation" aria-label="Main navigation">
           {items.map(([label, href, Icon]) => (
             <Link
               key={href}
@@ -115,6 +111,8 @@ export function Shell({
             <button
               className="mobile-menu"
               aria-label="Toggle navigation"
+              aria-expanded={open}
+              aria-controls="workspace-navigation"
               onClick={() => setOpen(!open)}
             >
               <Menu size={22} />
@@ -125,7 +123,8 @@ export function Shell({
             <span className="text-slate-300 hidden sm:inline">/</span>
             <strong>{active?.[0] || "Software Hub"}</strong>
           </div>
-          <div className="flex items-center gap-5">
+          <div className="topbar-actions">
+            <HelpCenter role={profile.role} />
             <Link
               href="/reviews"
               className="notification-button"

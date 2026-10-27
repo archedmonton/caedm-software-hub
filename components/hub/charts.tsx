@@ -86,7 +86,7 @@ export function SpendingCharts({ software }: { software: Subscription[] }) {
                   />
                   <Bar
                     dataKey="cost"
-                    fill="#3c6ddc"
+                    fill="var(--caedm-blue)"
                     radius={[5, 5, 0, 0]}
                     maxBarSize={44}
                   />

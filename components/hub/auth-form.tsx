@@ -1,9 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useActionState } from "react";
-import { ShieldCheck, ArrowRight, Church } from "lucide-react";
+import { ShieldCheck, ArrowRight } from "lucide-react";
 import { authenticate, type AuthState } from "@/app/auth/actions";
 import { Button } from "@/components/ui/button";
+import { Brand } from "@/components/hub/brand";
+import { HelpCenter } from "@/components/hub/help-center";
 const copy = {
   login: ["Welcome back", "Sign in to your CAEDM workspace.", "Sign in"],
   register: [
@@ -39,14 +41,9 @@ export function AuthForm({
   return (
     <main className="auth-layout">
       <aside className="auth-story">
-        <Link href="/login" className="brand">
-          <Church size={30} />
-          <span>
-            CAEDM<span className="brand-caption">SOFTWARE HUB</span>
-          </span>
-        </Link>
+        <Brand />
         <div>
-          <span className="eyebrow text-blue-300">
+          <span className="eyebrow auth-eyebrow">
             GOOD STEWARDSHIP. CLEARER DECISIONS.
           </span>
           <h1>
@@ -62,6 +59,9 @@ export function AuthForm({
         <small>Catholic Archdiocese of Edmonton</small>
       </aside>
       <section className="auth-main">
+        <div className="auth-tools">
+          <HelpCenter />
+        </div>
         <div className="auth-card">
           <span className="icon-tile">
             <ShieldCheck size={24} />
@@ -152,7 +152,7 @@ export function AuthForm({
                 </p>
               )}
               <Button className="w-full" disabled={pending}>
-                {pending ? "Please wait…" : submit}
+                {pending ? "Please wait..." : submit}
                 <ArrowRight size={16} />
               </Button>
             </form>

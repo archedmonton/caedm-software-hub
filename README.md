@@ -117,6 +117,14 @@ Vercel and hosted Supabase each need access to the approved SMTP endpoint from t
 
 See Microsoft's [authenticated SMTP configuration](https://learn.microsoft.com/en-us/exchange/clients/pop3-and-imap4/configure-authenticated-smtp) and [protocol logging](https://learn.microsoft.com/en-us/exchange/mail-flow/connectors/protocol-logging) guidance. Configure application SMTP in Vercel separately from Supabase Auth SMTP.
 
+## CAEDM branding and in-app help
+
+The shared Brand component uses the supplied full-color logo at lib/assets/caedm-logo.png without cropping or recoloring it. A white surface preserves its appearance on the burgundy sidebar and sign-in panel. The palette is defined by the --caedm-* variables in app/globals.css: burgundy #860038, gold #E5C047, blue #005493, red #BF311A and white #ffffff. Primary actions use burgundy; gold highlights navigation; blue supports guidance and reporting; red identifies errors.
+
+The Help icon appears on sign-in, registration, password recovery, invitation, approval and setup screens, and in the workspace header. It opens a searchable guide with topic filters, expandable step-by-step answers and guidance for the current page. Public help explains account access and missing emails. Authenticated Staff, Finance and Administrators receive guidance for their available workflows. Help is informational; authorization remains enforced by existing server actions and database policies.
+
+The native modal supports keyboard focus containment, Escape, a close button and focus restoration, with a scrollable answer area on smaller screens. Help text lives in lib/help-content.ts; update it whenever a workflow changes. Contact guidance refers employees to their CAEDM workspace administrator and does not collect passwords, links or support messages.
+
 ## Workflows
 
 - **Dashboard:** real records drive counts, normalized monthly/annual amounts, projected billing, decision deadlines, expiring licenses, department/category charts, and activity. Staff see permitted departments only.
@@ -142,7 +150,7 @@ Unique review/recipient/message constraints and transaction locks prevent normal
 
 ## Verification
 
-Last verified locally on October 27, 2026: TypeScript and ESLint passed; 40 unit tests, 37 database tests, and all 11 real local-Supabase browser workflows passed; the production build passed. All six migrations were applied to the isolated local stack. Browser tests include branded invitation delivery, password setup, department access, replay prevention, resend and revocation. External SMTP delivery and hosted deployment require separate verification.
+Last verified locally on October 27, 2026: TypeScript and ESLint passed; 40 unit tests, 37 database tests, and all 13 real local-Supabase browser workflows passed; the production build passed. All six migrations were applied to the isolated local stack. Browser tests include branded invitation delivery, password setup, department access, replay prevention, resend and revocation, plus logo loading, help search, keyboard focus, Escape dismissal and contextual guidance for Staff, Finance and Administrators. Desktop and mobile branding were visually reviewed. External SMTP delivery and hosted deployment require separate verification.
 
 ```powershell
 npm run check

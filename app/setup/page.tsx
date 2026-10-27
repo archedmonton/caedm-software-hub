@@ -1,8 +1,14 @@
+import { Brand } from "@/components/hub/brand";
+import { HelpCenter } from "@/components/hub/help-center";
 import Link from "next/link";
 export default function Setup() {
   return (
     <main className="standalone">
       <section className="panel max-w-xl p-10">
+        <div className="standalone-brand">
+          <Brand />
+          <HelpCenter />
+        </div>
         <span className="eyebrow">CAEDM SOFTWARE HUB</span>
         <h1>Connect your workspace</h1>
         <p className="text-muted-foreground my-4">
