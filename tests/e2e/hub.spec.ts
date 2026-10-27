@@ -448,3 +448,239 @@ test("password reset email works for a verified pending account without granting
     page.getByRole("alert").filter({ hasText: "invalid or expired" }),
   ).toBeVisible();
 });
+
+async function capturedInvitation(email: string, previousId?: string) {
+  let captured:
+    | {
+        id: string;
+        url: string;
+        from: { Name: string; Address: string };
+        html: string;
+      }
+    | undefined;
+  await expect
+    .poll(async () => {
+      const list = await (
+        await fetch(
+          `${config.MAILPIT_URL || config.INBUCKET_URL}/api/v1/messages`,
+        )
+      ).json();
+      const message = list.messages?.find(
+        (m: { ID: string; Subject: string; To: { Address: string }[] }) =>
+          m.ID !== previousId &&
+          m.Subject === "Invitation from CAEDM Software Hub" &&
+          m.To.some((t) => t.Address === email),
+      );
+      if (!message) return false;
+      const detail = await (
+        await fetch(
+          `${config.MAILPIT_URL || config.INBUCKET_URL}/api/v1/message/${message.ID}`,
+        )
+      ).json();
+      const html: string = detail.HTML || detail.Text || "";
+      const match = html.match(
+        /http:\/\/localhost:3100\/accept-invitation#token=[a-f0-9]{64}/,
+      );
+      if (!match) return false;
+      captured = { id: message.ID, url: match[0], from: detail.From, html };
+      return true;
+    })
+    .toBe(true);
+  return captured!;
+}
+async function sendEmployeeInvitation(page: Page, email: string) {
+  await login(page, "admin");
+  await page.goto("/team");
+  const section = page.locator("section").filter({
+    has: page.getByRole("heading", {
+      name: "Invite an employee",
+      exact: true,
+    }),
+  });
+  await section
+    .getByLabel("Employee name", { exact: true })
+    .fill("Invited Pilot Employee");
+  await section.getByLabel("Employee work email").fill(email);
+  await section.getByLabel("Invitation department").selectOption(team);
+  await section
+    .getByRole("button", { name: "Send invitation", exact: true })
+    .click();
+  await expect(section.getByRole("status")).toContainText("Invitation sent");
+}
+test("administrator invitation sends branded mail and requires password setup before department access", async ({
+  page,
+  browser,
+  request,
+}) => {
+  const email = `e2e-invited-${suffix}@caedm.ca`;
+  await sendEmployeeInvitation(page, email);
+  const mail = await capturedInvitation(email);
+  expect(mail.from.Name).toBe("CAEDM Software Hub");
+  expect(mail.html).toContain("Accept invitation");
+  const { data: before } = await admin
+    .from("employee_invitations")
+    .select("id,status,token_hash")
+    .eq("email", email)
+    .single();
+  expect(before!.status).toBe("pending");
+  expect(mail.url).not.toContain(before!.token_hash);
+  expect((await request.get("/accept-invitation")).status()).toBe(200);
+  expect(
+    (
+      await admin
+        .from("employee_invitations")
+        .select("status")
+        .eq("email", email)
+        .single()
+    ).data!.status,
+  ).toBe("pending");
+  const context = await browser.newContext();
+  try {
+    const recipient = await context.newPage();
+    await recipient.goto(mail.url);
+    await expect(
+      recipient.getByRole("heading", { name: "Set up your account" }),
+    ).toBeVisible();
+    await expect(recipient).toHaveURL(/\/accept-invitation$/);
+    const chosenPassword = secret + "Invitation9";
+    await recipient
+      .getByLabel("New password", { exact: true })
+      .fill(chosenPassword);
+    await recipient.getByLabel("Confirm password").fill(chosenPassword);
+    await recipient
+      .getByRole("button", { name: "Accept invitation and set password" })
+      .click();
+    await expect(recipient.getByRole("status")).toContainText(
+      "Your account is ready",
+    );
+    await recipient
+      .getByRole("link", { name: "Sign in to your workspace" })
+      .click();
+    await recipient.getByLabel("Work email").fill(email);
+    await recipient
+      .getByLabel("Password", { exact: true })
+      .fill(chosenPassword);
+    await recipient
+      .getByRole("button", { name: "Sign in", exact: true })
+      .click();
+    await expect(recipient).toHaveURL(/dashboard/);
+    expect(
+      (
+        await admin
+          .from("employee_invitations")
+          .select("status")
+          .eq("email", email)
+          .single()
+      ).data!.status,
+    ).toBe("accepted");
+    const client = createClient(
+      config.API_URL,
+      config.PUBLISHABLE_KEY || config.ANON_KEY,
+      { auth: { persistSession: false } },
+    );
+    const signed = await checked(
+      await client.auth.signInWithPassword({ email, password: chosenPassword }),
+    );
+    const member = await checked(
+      await client
+        .from("team_members")
+        .select("team_id,can_manage")
+        .eq("profile_id", signed.user!.id),
+    );
+    expect(member).toEqual([{ team_id: team, can_manage: false }]);
+    expect(
+      (await client.from("employee_invitations").select("id")).data,
+    ).toEqual([]);
+    await recipient.goto("/team");
+    await expect(recipient).toHaveURL(/dashboard/);
+    await recipient.goto(mail.url);
+    await recipient
+      .getByLabel("New password", { exact: true })
+      .fill(chosenPassword);
+    await recipient.getByLabel("Confirm password").fill(chosenPassword);
+    await recipient
+      .getByRole("button", { name: "Accept invitation and set password" })
+      .click();
+    await expect(recipient.getByRole("main").getByRole("alert")).toContainText(
+      "invalid",
+    );
+  } finally {
+    await context.close();
+  }
+});
+test("resending invalidates old invitation links and revocation blocks the latest link", async ({
+  page,
+  browser,
+}) => {
+  const email = `e2e-revoked-invite-${suffix}@caedm.ca`;
+  await sendEmployeeInvitation(page, email);
+  const first = await capturedInvitation(email);
+  const invite = await checked(
+    await admin
+      .from("employee_invitations")
+      .select("id")
+      .eq("email", email)
+      .single(),
+  );
+  if (!invite) throw new Error("The test invitation was not created.");
+  await checked(
+    await admin
+      .from("employee_invitations")
+      .update({ last_sent_at: new Date(Date.now() - 120000).toISOString() })
+      .eq("id", invite.id)
+      .select(),
+  );
+  const section = page.locator("section").filter({
+    has: page.getByRole("heading", {
+      name: "Employee invitations",
+      exact: true,
+    }),
+  });
+  const row = section.locator("article").filter({ hasText: email });
+  await row.getByRole("button", { name: "Resend invitation" }).click();
+  await expect(row.getByRole("status")).toContainText(
+    "A new invitation was sent",
+  );
+  const second = await capturedInvitation(email, first.id);
+  expect(second.url).not.toBe(first.url);
+  const context = await browser.newContext();
+  try {
+    const recipient = await context.newPage();
+    await recipient.goto(first.url);
+    await recipient
+      .getByLabel("New password", { exact: true })
+      .fill(secret + "Invite9");
+    await recipient.getByLabel("Confirm password").fill(secret + "Invite9");
+    await recipient
+      .getByRole("button", { name: "Accept invitation and set password" })
+      .click();
+    await expect(recipient.getByRole("main").getByRole("alert")).toContainText(
+      "invalid",
+    );
+    page.once("dialog", (dialog) => dialog.accept());
+    await row.getByRole("button", { name: "Revoke invitation" }).click();
+    await expect(row.getByText("Revoked", { exact: true })).toBeVisible();
+    await recipient.goto(second.url);
+    await recipient
+      .getByLabel("New password", { exact: true })
+      .fill(secret + "Invite9");
+    await recipient.getByLabel("Confirm password").fill(secret + "Invite9");
+    await recipient
+      .getByRole("button", { name: "Accept invitation and set password" })
+      .click();
+    await expect(recipient.getByRole("main").getByRole("alert")).toContainText(
+      "invalid",
+    );
+    expect(
+      (
+        await admin
+          .from("employee_invitations")
+          .select("status")
+          .eq("id", invite.id)
+          .single()
+      ).data!.status,
+    ).toBe("revoked");
+  } finally {
+    await context.close();
+  }
+});

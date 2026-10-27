@@ -1,25 +1,65 @@
 import "server-only";
 import nodemailer from "nodemailer";
-export type Message = { id: string; to: string; subject: string; text: string };
+import { professionalSender } from "@/lib/invitation-content";
+export type Message = {
+  id: string;
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+};
 export interface EmailProvider {
   name: string;
   send(message: Message): Promise<void>;
 }
 export function emailProvider(): EmailProvider {
   const provider = process.env.EMAIL_PROVIDER || "local";
+  const from = professionalSender(
+    process.env.EMAIL_FROM ||
+      (process.env.NODE_ENV !== "production"
+        ? "notifications@caedm.ca"
+        : undefined),
+  );
+  const send = (
+    transport: ReturnType<typeof nodemailer.createTransport>,
+    message: Message,
+  ) =>
+    transport.sendMail({
+      from,
+      to: message.to,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+      messageId: `<${message.id}@${from.address.split("@")[1]}>`,
+    });
   if (provider === "local") {
     if (process.env.NODE_ENV === "production")
-      throw new Error("Configure SMTP before production reminder delivery.");
+      throw new Error("Configure SMTP before production email delivery.");
     return {
       name: "local",
-      async send() {
-        /* Content is persisted by finish_notification and previewed in Settings. */
+      async send(message) {
+        if (!message.html) return; // Existing reminder previews are retained in notification activity.
+        const target = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
+        if (!["localhost", "127.0.0.1"].includes(target.hostname))
+          throw new Error(
+            "Local invitation delivery requires the local Supabase stack.",
+          );
+        const transport = nodemailer.createTransport({
+          host: "127.0.0.1",
+          port: Number(process.env.LOCAL_SMTP_PORT || 54325),
+          ignoreTLS: true,
+          connectionTimeout: 10000,
+          socketTimeout: 15000,
+        });
+        await send(transport, message);
       },
     };
   }
   if (provider !== "smtp" || !process.env.SMTP_HOST)
     throw new Error("Email provider is not configured.");
   const port = Number(process.env.SMTP_PORT || 587);
+  if (!Number.isInteger(port) || port < 1 || port > 65535)
+    throw new Error("SMTP port is invalid.");
   const transport = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port,
@@ -29,18 +69,13 @@ export function emailProvider(): EmailProvider {
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
       : undefined,
     connectionTimeout: 10000,
+    greetingTimeout: 10000,
     socketTimeout: 15000,
   });
   return {
     name: "smtp",
     async send(message) {
-      await transport.sendMail({
-        from: process.env.EMAIL_FROM || "Software Hub <software-hub@caedm.ca>",
-        to: message.to,
-        subject: message.subject,
-        text: message.text,
-        messageId: `<${message.id}@software-hub.caedm.ca>`,
-      });
+      await send(transport, message);
     },
   };
 }

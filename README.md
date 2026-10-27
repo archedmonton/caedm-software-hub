@@ -48,7 +48,7 @@ Reset removes this local project's accounts and records. Never use it against a 
 | `NEXT_PUBLIC_SUPABASE_URL`             | Supabase API URL                                                                            |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public publishable key, or legacy anon key                                                  |
 | `APP_URL`                              | Canonical application origin; HTTPS required in production                                  |
-| `SUPABASE_SERVICE_ROLE_KEY`            | Server only: durable authentication throttling and reminder worker                          |
+| `SUPABASE_SERVICE_ROLE_KEY`            | Server only: durable authentication throttling, invitation onboarding and reminder worker   |
 | `CRON_SECRET`                          | Server only: random secret of at least 32 characters for scheduled POST requests            |
 | `EMAIL_PROVIDER`                       | `local` in development, `smtp` for production delivery                                      |
 | `EMAIL_FROM`                           | Verified sender identity configured with your SMTP provider                                 |
@@ -56,7 +56,7 @@ Reset removes this local project's accounts and records. Never use it against a 
 | `SMTP_USER`, `SMTP_PASSWORD`           | Server only SMTP credentials, when required                                                 |
 | `DATABASE_URL`                         | Optional direct PostgreSQL connection for external tooling; not used by application queries |
 
-Never prefix server secrets with `NEXT_PUBLIC_`. Never commit environment files or paste live credentials into logs. Ordinary business queries always use the signed-in user's Supabase client and RLS. The service credential is isolated to authentication throttling and reminder delivery. Missing Supabase setup produces a setup screen; production authentication fails closed if durable throttling is not configured. Local authentication uses a bounded in-memory limiter without the service key; Supabase Auth has its own rate limits in addition.
+Never prefix server secrets with `NEXT_PUBLIC_`. Never commit environment files or paste live credentials into logs. Ordinary business queries always use the signed-in user's Supabase client and RLS. The service credential is isolated to authentication throttling, administrator-controlled invitation onboarding and reminder delivery. Missing Supabase setup produces a setup screen; production authentication fails closed if durable throttling is not configured. Local authentication uses a bounded in-memory limiter without the service key; Supabase Auth has its own rate limits in addition.
 
 ## Supabase configuration
 
@@ -83,6 +83,40 @@ Use `type=recovery` for the password-reset template. Default Supabase PKCE email
 
 After a designated administrator verifies their email, execute the reviewed `supabase/bootstrap-admin.sql` with that exact email as the database administrator. Normal account approval cannot approve an unverified identity. The last active administrator cannot be deactivated or demoted. Deactivated or suspended users immediately lose database access even with an existing session.
 
+## Administrator invitations
+
+On Team Management, create a department, then use **Invite an employee** to select the employee's name, exact @caedm.ca email, role, department and software permissions. Invitations are intended for new accounts; manage an existing account through Registered accounts instead.
+
+The employee receives **Invitation from CAEDM Software Hub** from the mailbox in EMAIL_FROM, with the display name **CAEDM Software Hub**. SMTP_USER remains the provider's login username; it does not control the visible sender name. Both HTML and plain-text versions are sent through the application's SMTP configuration. Supabase Auth SMTP remains responsible for ordinary registration and password reset messages.
+
+Invitation links expire after 72 hours. Opening a link does not consume it: the employee must submit a valid password to complete setup. Role, status and department membership are assigned together only after password setup. The employee then signs in normally. Invitations can be resent after one minute (invalidating the previous link) or revoked. A failed email remains visible and can be resent after correcting SMTP settings. Each administrator can prepare at most 20 invitations per hour.
+
+Only invitation token hashes are stored. Each invitation reserves a server-generated Auth user ID so signup metadata cannot bypass onboarding. Acceptance uses a short exclusive claim; interrupted setup can resume for the same invitation without adopting unrelated existing accounts. Resending, revocation, expiry and loss of the inviting administrator's verified active status prevent activation. Ordinary signup and direct profile activation cannot bypass a pending invitation. Audit entries exclude token hashes and claim secrets.
+
+For production, set EMAIL_PROVIDER=smtp, an authorized EMAIL_FROM mailbox, SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD, the server-only SUPABASE_SERVICE_ROLE_KEY and APP_URL=https://your-stable-domain in Vercel. This feature extends the server key's scope only to administrator-authorized onboarding and service-only invitation RPCs. Never prefix it with NEXT_PUBLIC_. Apply the additive invitation migration before deploying the new application version. Existing accounts and financial records are preserved.
+
+After adding smtp_port to an existing local stack, restart it with npx supabase stop then npx supabase start to expose the port while retaining local data. Local invitation emails go to the local Mailpit SMTP receiver on 127.0.0.1:54325 and can be read at http://127.0.0.1:54324. The local provider refuses invitation delivery against a hosted Supabase URL and is forbidden in production. Invitation tokens stay in the URL fragment and are removed from browser history when captured; they are not sent in GET requests or persisted to client storage.
+
+Have the mail administrator verify SPF authorization, DKIM signing and DMARC alignment for the EMAIL_FROM domain. Keep the real sender address authorized by the provider, disable tracking/link rewriting for these transactional emails, and test delivery to the organization's mailboxes. Professional branding cannot guarantee inbox placement.
+
+### SMTP policy troubleshooting
+
+Use port 587 with STARTTLS, or port 465 with implicit TLS, and retain certificate verification. A successful TLS connection followed by `535 5.7.3 Authentication unsuccessful` means the server rejected authentication. This response alone does not distinguish an account/credential problem from connector or authentication policy. Changing the visible sender name does not resolve authentication failures.
+
+For on-premises Exchange, have the mail administrator inspect the connector that receives this application's connection. These read-only commands run in the Exchange Management Shell:
+
+```powershell
+Get-ReceiveConnector -Server <ExchangeServerName> |
+  Where-Object { $_.Bindings -match ':587$' } |
+  Format-List Identity,Enabled,Bindings,AuthMechanism,PermissionGroups,Fqdn,RemoteIPRanges,ProtocolLoggingLevel
+```
+
+Check the account's enabled/locked/expired state, permitted login identity, applicable authentication policies, connector permissions and authentication methods. Correlate the failed authentication time with the Front End SMTP receive protocol logs and Windows authentication events. If logging is disabled, the mail administrator can temporarily enable verbose logging on the specific connector under the organization's change process. Do not enable anonymous/open relay or weaken TLS to work around the failure.
+
+Vercel and hosted Supabase each need access to the approved SMTP endpoint from their own networks. A hostname reachable only through internal DNS or private addresses is insufficient without approved private connectivity. Public DNS resolving successfully also does not prove TCP reachability or firewall authorization. Verify the public endpoint, certificate, port and access restrictions from the deployment environment, then verify that the authenticated account can send as the EMAIL_FROM mailbox.
+
+See Microsoft's [authenticated SMTP configuration](https://learn.microsoft.com/en-us/exchange/clients/pop3-and-imap4/configure-authenticated-smtp) and [protocol logging](https://learn.microsoft.com/en-us/exchange/mail-flow/connectors/protocol-logging) guidance. Configure application SMTP in Vercel separately from Supabase Auth SMTP.
+
 ## Workflows
 
 - **Dashboard:** real records drive counts, normalized monthly/annual amounts, projected billing, decision deadlines, expiring licenses, department/category charts, and activity. Staff see permitted departments only.
@@ -108,7 +142,7 @@ Unique review/recipient/message constraints and transaction locks prevent normal
 
 ## Verification
 
-Last verified locally on October 26, 2026: TypeScript and ESLint passed; 36 unit tests, 20 database tests, and all 9 real local-Supabase browser workflows passed; the production build passed; npm audit reported zero vulnerabilities. All five migrations were applied to the isolated local stack. Desktop and mobile screenshots were inspected. Hosted deployment and external SMTP delivery remain deployment-specific verification steps.
+Last verified locally on October 27, 2026: TypeScript and ESLint passed; 40 unit tests, 37 database tests, and all 11 real local-Supabase browser workflows passed; the production build passed. All six migrations were applied to the isolated local stack. Browser tests include branded invitation delivery, password setup, department access, replay prevention, resend and revocation. External SMTP delivery and hosted deployment require separate verification.
 
 ```powershell
 npm run check

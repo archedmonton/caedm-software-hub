@@ -3,15 +3,21 @@ import { allRows } from "@/lib/data";
 import { roles, type Profile, type Team } from "@/lib/domain";
 import { PageHeading, Status } from "@/components/hub/common";
 import { SimpleForm } from "@/components/hub/controls";
+import {
+  InviteEmployeeForm,
+  InvitationControls,
+} from "@/components/hub/invitation-form";
+import { employeeInvitations } from "@/lib/invitations";
 export default async function TeamPage() {
   const { db } = await requireAccess("admin");
-  const [people, teams, members] = await Promise.all([
+  const [people, teams, members, invitations] = await Promise.all([
     allRows<Profile>(db, "profiles"),
     allRows<Team>(db, "teams"),
     allRows<{ team_id: string; profile_id: string; can_manage: boolean }>(
       db,
       "team_members",
     ),
+    employeeInvitations(db),
   ]);
   return (
     <>
@@ -20,6 +26,14 @@ export default async function TeamPage() {
         title="People & departments"
         description="Give each person the right access and a clear place in the team."
       />
+      <section className="panel p-6 mb-6">
+        <h2 className="mb-3">Invite an employee</h2>
+        <p className="text-muted-foreground mb-5">
+          Select their access and send a professional invitation. No account
+          access is granted until they set their password.
+        </p>
+        <InviteEmployeeForm teams={teams} />
+      </section>
       <div className="admin-grid">
         <section className="panel p-6">
           <h2 className="mb-5">Create a department</h2>
@@ -67,6 +81,68 @@ export default async function TeamPage() {
           </SimpleForm>
         </section>
       </div>
+      <section className="panel mt-6" aria-labelledby="invitations-heading">
+        <div className="panel-heading">
+          <div>
+            <h2 id="invitations-heading">Employee invitations</h2>
+            <p>
+              Links expire after 72 hours. Resending invalidates the previous
+              link.
+            </p>
+          </div>
+          <span className="count-chip">{invitations.length}</span>
+        </div>
+        {!invitations.length ? (
+          <p className="p-6 text-muted-foreground">No invitations yet.</p>
+        ) : (
+          <div className="people-list">
+            {invitations
+              .sort((a, b) => b.created_at.localeCompare(a.created_at))
+              .map((i) => {
+                const expired = i.expired;
+                const label =
+                  i.status === "accepted"
+                    ? "Accepted"
+                    : i.status === "revoked"
+                      ? "Revoked"
+                      : expired
+                        ? "Expired"
+                        : i.delivery_status === "failed"
+                          ? "Delivery failed"
+                          : i.delivery_status === "sending"
+                            ? "Sending"
+                            : "Pending invitation";
+                return (
+                  <article key={i.id}>
+                    <div>
+                      <h3>{i.full_name}</h3>
+                      <p className="text-sm text-muted-foreground mt-1 mb-3">
+                        {i.email}
+                      </p>
+                      <span className="status">{label}</span>
+                      <p className="field-hint mt-3">
+                        {teams.find((t) => t.id === i.team_id)?.name} | {i.role}
+                      </p>
+                      <p className="field-hint">
+                        Expires{" "}
+                        {new Intl.DateTimeFormat("en-CA", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                          timeZone: "America/Edmonton",
+                        }).format(new Date(i.expires_at))}{" "}
+                        (Edmonton)
+                      </p>
+                      {i.delivery_error && (
+                        <p className="notice error mt-3">{i.delivery_error}</p>
+                      )}
+                    </div>
+                    {i.status === "pending" && <InvitationControls id={i.id} />}
+                  </article>
+                );
+              })}
+          </div>
+        )}
+      </section>
       <section className="panel mt-6">
         <div className="panel-heading">
           <div>
