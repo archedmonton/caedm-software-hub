@@ -1,6 +1,6 @@
 import { requireAccess } from "@/lib/auth";
 import { allRows } from "@/lib/data";
-import { financeRole, type Team } from "@/lib/domain";
+import { adminRole, financeRole, roleLabels, type Team } from "@/lib/domain";
 import { PageHeading, Status } from "@/components/hub/common";
 import { ActionButton, SimpleForm } from "@/components/hub/controls";
 export default async function Settings() {
@@ -43,7 +43,7 @@ export default async function Settings() {
           <div>
             <dt>Role</dt>
             <dd>
-              <Status value={profile.role} />
+              <span className="status">{roleLabels[profile.role]}</span>
             </dd>
           </div>
           <div>
@@ -58,7 +58,7 @@ export default async function Settings() {
           </div>
         </dl>
       </section>
-      {profile.role === "admin" && (
+      {adminRole(profile.role) && (
         <div className="admin-grid mt-6">
           <section className="panel p-7">
             <h2 className="mb-5">Organization & reminders</h2>

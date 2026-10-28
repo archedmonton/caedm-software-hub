@@ -32,6 +32,8 @@ export default async function RequestFeaturePage() {
         .limit(10)
     : { data: [], error: null };
   const ready = eligible && !error;
+  if (error)
+    console.error("Feature request history unavailable", { code: error.code });
   return (
     <main className="feature-page">
       <div className="feature-page-header">

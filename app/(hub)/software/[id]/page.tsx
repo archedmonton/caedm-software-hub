@@ -5,6 +5,7 @@ import { Pencil, ArrowLeft, ExternalLink } from "lucide-react";
 import { requireAccess } from "@/lib/auth";
 import { subscriptionSelect } from "@/lib/data";
 import {
+  adminRole,
   cents,
   decisionDeadline,
   equivalents,
@@ -139,7 +140,7 @@ export default async function Detail({
           managed separately.
         </p>
         <div className="flex gap-3 flex-wrap">
-          {profile.role === "admin" && (
+          {adminRole(profile.role) && (
             <ActionButton action="review" id={id}>
               Request usage review
             </ActionButton>

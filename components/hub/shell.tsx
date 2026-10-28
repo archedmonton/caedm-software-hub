@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { Profile } from "@/lib/domain";
-import { financeRole } from "@/lib/domain";
+import { adminRole, financeRole, roleLabels } from "@/lib/domain";
 import { logout } from "@/app/auth/actions";
 import { Brand } from "@/components/hub/brand";
 import { HelpCenter } from "@/components/hub/help-center";
@@ -44,7 +44,7 @@ export function Shell({
   const items = navigation.filter(
     (item) =>
       (item[1] !== "/finance" || financeRole(profile.role)) &&
-      (item[1] !== "/team" || profile.role === "admin"),
+      (item[1] !== "/team" || adminRole(profile.role)),
   );
   const active = navigation.find((item) => path.startsWith(item[1]));
   return (
@@ -88,7 +88,7 @@ export function Shell({
             </span>
             <div>
               <strong>{profile.full_name}</strong>
-              <span>{profile.role} workspace</span>
+              <span>{roleLabels[profile.role]} workspace</span>
             </div>
             <form action={logout}>
               <button aria-label="Sign out" title="Sign out">

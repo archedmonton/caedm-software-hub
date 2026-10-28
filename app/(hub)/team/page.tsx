@@ -1,6 +1,7 @@
 import { requireAccess } from "@/lib/auth";
 import { allRows } from "@/lib/data";
-import { roles, type Profile, type Team } from "@/lib/domain";
+import { roles, roleLabels, type Profile, type Team } from "@/lib/domain";
+import { canManageAccount } from "@/lib/account-permissions";
 import { PageHeading, Status } from "@/components/hub/common";
 import { SimpleForm } from "@/components/hub/controls";
 import {
@@ -9,8 +10,8 @@ import {
 } from "@/components/hub/invitation-form";
 import { employeeInvitations } from "@/lib/invitations";
 export default async function TeamPage() {
-  const { db } = await requireAccess("admin");
-  const [people, teams, members, invitations] = await Promise.all([
+  const { db, profile } = await requireAccess("admin");
+  const [people, teams, members, invitations, protection] = await Promise.all([
     allRows<Profile>(db, "profiles"),
     allRows<Team>(db, "teams"),
     allRows<{ team_id: string; profile_id: string; can_manage: boolean }>(
@@ -18,7 +19,15 @@ export default async function TeamPage() {
       "team_members",
     ),
     employeeInvitations(db),
+    db.rpc("get_developer_protection"),
   ]);
+  const protectedDeveloperId = protection.data as string | null;
+  const editable = (person: Profile) =>
+    !protection.error &&
+    canManageAccount(profile, person, protectedDeveloperId);
+  const assignableRoles = roles.filter(
+    (role) => role !== "super_admin" || profile.role === "super_admin",
+  );
   return (
     <>
       <PageHeading
@@ -26,6 +35,13 @@ export default async function TeamPage() {
         title="People & departments"
         description="Give each person the right access and a clear place in the team."
       />
+      <div className="notice mb-6">
+        {profile.role === "super_admin"
+          ? "You can grant or revoke Super Admin access for other verified, active employees. The protected developer account cannot be demoted, suspended or removed."
+          : "Admins manage ordinary employee access. Only Super Admins can grant or change Super Admin access; protected accounts are read-only here."}
+        {protection.error &&
+          " Access management is temporarily unavailable. Contact the developer."}
+      </div>
       <section className="panel p-6 mb-6">
         <h2 className="mb-3">Invite an employee</h2>
         <p className="text-muted-foreground mb-5">
@@ -50,7 +66,7 @@ export default async function TeamPage() {
             <label>
               Employee
               <select name="profile_id" required>
-                {people.map((p) => (
+                {people.filter(editable).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.full_name} · {p.email}
                   </option>
@@ -121,7 +137,8 @@ export default async function TeamPage() {
                       </p>
                       <span className="status">{label}</span>
                       <p className="field-hint mt-3">
-                        {teams.find((t) => t.id === i.team_id)?.name} | {i.role}
+                        {teams.find((t) => t.id === i.team_id)?.name} |{" "}
+                        {roleLabels[i.role]}
                       </p>
                       <p className="field-hint">
                         Expires{" "}
@@ -171,6 +188,12 @@ export default async function TeamPage() {
                     {p.email}
                   </p>
                   <Status value={p.status} />
+                  <span className="status ml-2">{roleLabels[p.role]}</span>
+                  {p.id === protectedDeveloperId && (
+                    <p className="field-hint mt-3">
+                      Protected developer Super Admin
+                    </p>
+                  )}
                   <p className="field-hint mt-3">
                     {members
                       .filter((m) => m.profile_id === p.id)
@@ -181,37 +204,54 @@ export default async function TeamPage() {
                       .join(" · ") || "No department assigned"}
                   </p>
                 </div>
-                <SimpleForm kind="profile" confirm label="Update access">
-                  <input type="hidden" name="id" value={p.id} />
-                  <div className="flex gap-3 flex-wrap">
-                    <label>
-                      Role
-                      <select name="role" defaultValue={p.role}>
-                        {roles.map((r) => (
-                          <option key={r}>{r}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Status
-                      <select name="status" defaultValue={p.status}>
-                        {[
-                          "pending_approval",
-                          "active",
-                          "rejected",
-                          "suspended",
-                          "deactivated",
-                        ].map((s) => (
-                          <option key={s} value={s}>
-                            {s.replaceAll("_", " ")}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                </SimpleForm>
+                {editable(p) && p.id !== protectedDeveloperId ? (
+                  <SimpleForm kind="profile" confirm label="Update access">
+                    <input type="hidden" name="id" value={p.id} />
+                    <div className="flex gap-3 flex-wrap">
+                      <label>
+                        Role
+                        <select name="role" defaultValue={p.role}>
+                          {assignableRoles
+                            .filter(
+                              (r) =>
+                                r !== "super_admin" ||
+                                p.status === "active" ||
+                                p.role === "super_admin",
+                            )
+                            .map((r) => (
+                              <option key={r} value={r}>
+                                {roleLabels[r]}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label>
+                        Status
+                        <select name="status" defaultValue={p.status}>
+                          {[
+                            "pending_approval",
+                            "active",
+                            "rejected",
+                            "suspended",
+                            "deactivated",
+                          ].map((s) => (
+                            <option key={s} value={s}>
+                              {s.replaceAll("_", " ")}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </SimpleForm>
+                ) : (
+                  <p className="field-hint">
+                    {p.id === protectedDeveloperId
+                      ? "Developer access is protected and must remain active."
+                      : "Only a Super Admin can change this account's access."}
+                  </p>
+                )}
                 {members
-                  .filter((m) => m.profile_id === p.id)
+                  .filter((m) => m.profile_id === p.id && editable(p))
                   .map((m) => (
                     <div key={m.team_id} className="mt-3">
                       <SimpleForm

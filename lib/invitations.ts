@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { allRows } from "@/lib/data";
+import type { Profile } from "@/lib/domain";
 import { appUrl, publicConfig } from "@/lib/env";
 import { emailProvider } from "@/lib/email";
 import {
@@ -84,7 +85,7 @@ export type TeamInvitation = {
   full_name: string;
   email: string;
   team_id: string;
-  role: string;
+  role: Profile["role"];
   status: string;
   delivery_status: string;
   delivery_error: string | null;

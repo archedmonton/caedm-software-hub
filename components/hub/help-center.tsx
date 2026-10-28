@@ -2,7 +2,12 @@
 import { useId, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { CircleHelp, Search, X, ChevronDown, LifeBuoy } from "lucide-react";
-import { helpContext, visibleHelpArticles } from "@/lib/help-content";
+import {
+  helpContext,
+  roleCapabilities,
+  visibleHelpArticles,
+} from "@/lib/help-content";
+import { roles, roleLabels } from "@/lib/domain";
 import type { Profile } from "@/lib/domain";
 import Link from "next/link";
 import { developer } from "@/lib/developer";
@@ -171,6 +176,38 @@ export function HelpCenter({ role }: { role?: Profile["role"] }) {
                 </summary>
                 <div className="help-answer">
                   <p>{a.summary}</p>
+                  {a.roleComparison && (
+                    <div
+                      className="help-role-comparison"
+                      role="region"
+                      aria-label="Role permissions comparison"
+                      tabIndex={0}
+                    >
+                      <table>
+                        <caption>Role permissions at a glance</caption>
+                        <thead>
+                          <tr>
+                            <th scope="col">Capability</th>
+                            {roles.map((role) => (
+                              <th scope="col" key={role}>
+                                {roleLabels[role]}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {roleCapabilities.map((row) => (
+                            <tr key={row.capability}>
+                              <th scope="row">{row.capability}</th>
+                              {roles.map((role) => (
+                                <td key={role}>{row[role]}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                   <ol>
                     {a.steps.map((step, i) => (
                       <li key={i}>{step}</li>

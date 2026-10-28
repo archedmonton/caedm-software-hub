@@ -19,6 +19,7 @@ const emails = {
   admin: `e2e-admin-${suffix}@caedm.ca`,
   finance: `e2e-finance-${suffix}@caedm.ca`,
   staff: `e2e-staff-${suffix}@caedm.ca`,
+  super_admin: `e2e-super-admin-${suffix}@caedm.ca`,
   pending: `e2e-pending-${suffix}@caedm.ca`,
 };
 const ids: Record<string, string> = {};
@@ -45,7 +46,7 @@ test.beforeAll(async () => {
   admin = createClient(config.API_URL, config.SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   });
-  for (const role of ["admin", "finance", "staff"] as const) {
+  for (const role of ["admin", "finance", "staff", "super_admin"] as const) {
     const created = await checked(
       await admin.auth.admin.createUser({
         email: emails[role],
@@ -61,6 +62,13 @@ test.beforeAll(async () => {
       .eq("id", ids[role])
       .single();
     expect(p).toEqual({ role: "staff", status: "pending_approval" });
+    if (role === "super_admin")
+      await checked(
+        await admin
+          .from("profiles")
+          .update({ status: "active" })
+          .eq("id", ids[role]),
+      );
     await checked(
       await admin
         .from("profiles")
@@ -228,7 +236,7 @@ test("software creation, dashboard, search and editing use actual records", asyn
   await page
     .getByRole("textbox", { name: "Search software" })
     .fill(String(suffix));
-  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.getByRole("table").locator("tbody tr")).toHaveCount(1);
   await expect(page.getByText(softwareName, { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Dashboard", exact: true }).click();
   await expect(
@@ -1179,4 +1187,225 @@ test("a verified employee awaiting approval can request a feature without gainin
   ).toHaveLength(1);
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/pending-approval/);
+});
+
+test("ordinary Admin cannot grant Super Admin or change protected accounts", async ({
+  page,
+}) => {
+  await login(page, "admin");
+  await page.goto("/team");
+  const elevated = page
+    .locator("article")
+    .filter({ hasText: emails.super_admin });
+  await expect(
+    elevated.getByRole("combobox", { name: "Role", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    elevated.getByText("Only a Super Admin can change this account's access.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  const own = page.locator("article").filter({ hasText: emails.admin });
+  await expect(
+    own
+      .getByRole("combobox", { name: "Role", exact: true })
+      .locator('option[value="super_admin"]'),
+  ).toHaveCount(0);
+  const client = createClient(
+    config.API_URL,
+    config.PUBLISHABLE_KEY || config.ANON_KEY,
+    { auth: { persistSession: false } },
+  );
+  await client.auth.signInWithPassword({
+    email: emails.admin,
+    password: secret,
+  });
+  expect(
+    (
+      await client
+        .from("profiles")
+        .update({ role: "super_admin" })
+        .eq("id", ids.admin)
+        .select("id")
+    ).error,
+  ).toBeTruthy();
+  expect(
+    (
+      await client
+        .from("profiles")
+        .update({ role: "staff", status: "suspended" })
+        .eq("id", ids.super_admin)
+        .select("id")
+    ).data,
+  ).toEqual([]);
+  const protection = await client.rpc("get_developer_protection");
+  expect(protection.error).toBeNull();
+  if (protection.data) {
+    expect(
+      (
+        await client
+          .from("profiles")
+          .update({ role: "staff", status: "deactivated" })
+          .eq("id", protection.data)
+          .select("id")
+      ).data,
+    ).toEqual([]);
+    await expect(
+      page.getByText("Protected developer Super Admin", { exact: true }),
+    ).toBeVisible();
+    expect(
+      (
+        await client.rpc("remove_membership", {
+          department: team,
+          employee: protection.data,
+        })
+      ).error,
+    ).toBeTruthy();
+  }
+});
+
+test("Super Admin can grant and revoke elevated access through Team Management", async ({
+  page,
+}) => {
+  const email = `e2e-role-recipient-${suffix}@caedm.ca`;
+  const created = await checked(
+    await admin.auth.admin.createUser({
+      email,
+      password: secret,
+      email_confirm: true,
+      user_metadata: { full_name: "Role Grant Recipient", role: "super_admin" },
+    }),
+  );
+  const employeeId = created.user!.id;
+  await checked(
+    await admin
+      .from("profiles")
+      .update({ status: "active" })
+      .eq("id", employeeId),
+  );
+  await login(page, "super_admin");
+  await expect(
+    page.getByRole("link", { name: "Team Management", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Finance Centre", exact: true }),
+  ).toBeVisible();
+  await page.goto("/team");
+  const employee = page.locator("article").filter({ hasText: email });
+  await employee
+    .getByRole("combobox", { name: "Role", exact: true })
+    .selectOption("super_admin");
+  page.once("dialog", (dialog) => dialog.accept());
+  await employee
+    .getByRole("button", { name: "Update access", exact: true })
+    .click();
+  await expect(employee.getByRole("status")).toContainText("Changes saved");
+  expect(
+    (await admin.from("profiles").select("role").eq("id", employeeId).single())
+      .data!.role,
+  ).toBe("super_admin");
+  await page.screenshot({
+    path: ".artifacts/super-admin-team-desktop.png",
+    fullPage: true,
+  });
+  await employee
+    .getByRole("combobox", { name: "Role", exact: true })
+    .selectOption("finance");
+  page.once("dialog", (dialog) => dialog.accept());
+  await employee
+    .getByRole("button", { name: "Update access", exact: true })
+    .click();
+  await expect(
+    employee.getByRole("combobox", { name: "Role", exact: true }),
+  ).toHaveValue("finance");
+  await expect
+    .poll(
+      async () =>
+        (
+          await admin
+            .from("profiles")
+            .select("role")
+            .eq("id", employeeId)
+            .single()
+        ).data?.role,
+    )
+    .toBe("finance");
+  await page.getByRole("button", { name: "Open help", exact: true }).click();
+  const help = page.getByRole("dialog", { name: "How can we help?" });
+  await help
+    .getByRole("searchbox", { name: "Search help" })
+    .fill("grant revoke super admin");
+  await expect(
+    help.getByText("How do I grant or revoke Super Admin access?", {
+      exact: true,
+    }),
+  ).toBeVisible();
+});
+
+test("Help explains all four roles with an accessible comparison on desktop and mobile", async ({
+  page,
+}) => {
+  await login(page, "staff");
+  await page.getByRole("button", { name: "Open help", exact: true }).click();
+  const help = page.getByRole("dialog", { name: "How can we help?" });
+  await help
+    .getByRole("button", { name: "Roles & access", exact: true })
+    .click();
+  await help
+    .getByRole("searchbox", { name: "Search help" })
+    .fill("difference between");
+  await expect(
+    help.getByText(
+      "What is the difference between Super Admin, Admin, Finance and Staff?",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  const comparison = help.getByRole("region", {
+    name: "Role permissions comparison",
+  });
+  await expect(comparison.getByRole("columnheader")).toHaveText([
+    "Capability",
+    "Super Admin",
+    "Admin",
+    "Finance",
+    "Staff",
+  ]);
+  await expect(
+    comparison.getByRole("rowheader", {
+      name: "Record/correct expenses and export reports",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    help.getByText("How do I grant or revoke Super Admin access?", {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: ".artifacts/roles-help-desktop.png",
+    fullPage: false,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  expect(
+    await comparison.evaluate((el) => el.scrollWidth > el.clientWidth),
+  ).toBe(true);
+  expect(
+    await comparison
+      .getByRole("rowheader")
+      .evaluateAll((cells) =>
+        cells.every((cell) => cell.scrollWidth <= cell.clientWidth),
+      ),
+  ).toBe(true);
+  await comparison.focus();
+  await page.screenshot({
+    path: ".artifacts/roles-help-mobile.png",
+    fullPage: false,
+  });
+  await page.keyboard.press("Escape");
+  await expect(help).not.toBeVisible();
 });

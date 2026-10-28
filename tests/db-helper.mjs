@@ -1,12 +1,16 @@
 import { PGlite } from "@electric-sql/pglite";
 import { readFile, readdir } from "node:fs/promises";
-export async function database() {
+export async function database(options = {}) {
   const db = new PGlite();
   await db.exec(
     `create role anon;create role authenticated;create role service_role bypassrls;create role supabase_auth_admin;create schema auth;create table auth.users(id uuid primary key,email text not null,email_confirmed_at timestamptz,raw_user_meta_data jsonb default '{}',raw_app_meta_data jsonb default '{}',encrypted_password text default '');create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated,anon,service_role;grant execute on function auth.uid() to authenticated,anon,service_role;grant usage on schema public to authenticated,anon,service_role,supabase_auth_admin;`,
   );
   for (const file of (await readdir("supabase/migrations"))
-    .filter((f) => f.endsWith(".sql"))
+    .filter(
+      (f) =>
+        f.endsWith(".sql") &&
+        (!options.beforeVersion || f < options.beforeVersion),
+    )
     .sort())
     await db.exec(await readFile(`supabase/migrations/${file}`, "utf8"));
   return db;

@@ -2,7 +2,7 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { configured } from "@/lib/env";
-import { financeRole, type Profile } from "@/lib/domain";
+import { adminRole, financeRole, type Profile } from "@/lib/domain";
 export async function session() {
   if (!configured()) redirect("/setup");
   const db = await createClient();
@@ -30,7 +30,7 @@ export async function requireAccess(
   )
     redirect("/pending-approval");
   if (
-    (level === "admin" && context.profile.role !== "admin") ||
+    (level === "admin" && !adminRole(context.profile.role)) ||
     (level === "finance" && !financeRole(context.profile.role))
   )
     redirect("/dashboard?notice=Access+restricted");

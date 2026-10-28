@@ -2,6 +2,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAccess } from "@/lib/auth";
+import { roles } from "@/lib/domain";
+import { canManageAccount } from "@/lib/account-permissions";
 import {
   expenseSchema,
   financeRole,
@@ -123,13 +125,36 @@ export async function adminChange(
   kind: string,
   input: Record<string, string>,
 ): Promise<Result> {
-  const { db } = await requireAccess("admin");
+  const { db, profile } = await requireAccess("admin");
+  // Protection must be loaded from PostgreSQL; never infer authority from email.
+  const protection = await db.rpc("get_developer_protection");
+  if (protection.error)
+    return {
+      error:
+        "Access management is temporarily unavailable. Contact the developer.",
+    };
+  const protectedDeveloperId = protection.data as string | null;
+  const ensureAccountManagement = async (id: string) => {
+    const { data: target, error } = await db
+      .from("profiles")
+      .select("id,role")
+      .eq("id", id)
+      .single();
+    if (
+      error ||
+      !target ||
+      !canManageAccount(profile, target, protectedDeveloperId)
+    )
+      throw new Error(
+        "This account is protected. Only an authorized Super Admin can manage its access.",
+      );
+  };
   try {
     if (kind === "profile") {
       const values = z
         .object({
           id: z.string().uuid(),
-          role: z.enum(["admin", "finance", "staff"]),
+          role: z.enum(roles),
           status: z.enum([
             "pending_approval",
             "active",
@@ -139,6 +164,16 @@ export async function adminChange(
           ]),
         })
         .parse(input);
+      await ensureAccountManagement(values.id);
+      if (values.role === "super_admin" && profile.role !== "super_admin")
+        throw new Error("Only a Super Admin can grant Super Admin access.");
+      if (
+        values.id === protectedDeveloperId &&
+        (values.role !== "super_admin" || values.status !== "active")
+      )
+        throw new Error(
+          "The developer Super Admin must remain active with Super Admin access.",
+        );
       const { error } = await db
         .from("profiles")
         .update({ role: values.role, status: values.status })
@@ -156,6 +191,7 @@ export async function adminChange(
       const values = z
         .object({ team_id: z.string().uuid(), profile_id: z.string().uuid() })
         .parse(input);
+      await ensureAccountManagement(values.profile_id);
       const { error } = await db
         .from("team_members")
         .upsert({ ...values, can_manage: input.can_manage === "true" });
@@ -164,6 +200,7 @@ export async function adminChange(
       const values = z
         .object({ team_id: z.string().uuid(), profile_id: z.string().uuid() })
         .parse(input);
+      await ensureAccountManagement(values.profile_id);
       const { error } = await db.rpc("remove_membership", {
         department: values.team_id,
         employee: values.profile_id,

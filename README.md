@@ -125,9 +125,32 @@ See Microsoft's [authenticated SMTP configuration](https://learn.microsoft.com/e
 
 The shared Brand component uses the supplied full-color logo at lib/assets/caedm-logo.png without cropping or recoloring it. A white surface preserves its appearance on the burgundy sidebar and sign-in panel. The palette is defined by the --caedm-* variables in app/globals.css: burgundy #860038, gold #E5C047, blue #005493, red #BF311A and white #ffffff. Primary actions use burgundy; gold highlights navigation; blue supports guidance and reporting; red identifies errors.
 
-The Help icon appears on sign-in, registration, password recovery, invitation, approval and setup screens, and in the workspace header. It opens a searchable guide with topic filters, expandable step-by-step answers and guidance for the current page. Public help explains account access and missing emails. Authenticated Staff, Finance and Administrators receive guidance for their available workflows. Help is informational; authorization remains enforced by existing server actions and database policies.
+The Help icon appears on sign-in, registration, password recovery, invitation, approval and setup screens, and in the workspace header. It opens a searchable guide with topic filters, expandable step-by-step answers and guidance for the current page. Public help explains account access and missing emails. Authenticated Staff, Finance, Admin and Super Admin receive guidance for their available workflows. Help is informational; authorization remains enforced by existing server actions and database policies.
 
 The native modal supports keyboard focus containment, Escape, a close button and focus restoration, with a scrollable answer area on smaller screens. Help text lives in lib/help-content.ts; update it whenever a workflow changes. Every Help screen includes Developer Information for **Ruban Peppin**, a mail link to **ruban.peppin@caedm.ca**, and **Request a Feature**. The contact is shared in lib/developer.ts. Help itself is an informational guide; the separate feature form stores submitted suggestions.
+
+## Roles and protected developer access
+
+Help's **Roles & access** topic contains the complete four-role comparison, departmental View/Manage guidance, software ownership rules, approval requirements and privileged account instructions. The comparison is available on public and authenticated Help screens; operational Super Admin grant/revoke instructions are shown only to Super Admins. The comparison table supports keyboard focus and horizontal scrolling on smaller screens.
+
+| Capability | Super Admin | Admin | Finance | Staff |
+| --- | --- | --- | --- | --- |
+| Software, subscription costs and renewals | All departments | All departments | All departments | Assigned departments |
+| Create/edit/pause/cancel/archive software | All departments | All departments | All departments | Assigned departments with Manage permission |
+| Record/correct expenses, audit access and CSV/Excel exports | Yes | Yes | Yes | No |
+| Maintain vendors and limited payment references | Yes | Yes | Yes | No |
+| Invite/approve employees and assign ordinary roles | Yes | Yes | No | No |
+| Departments, memberships, settings and manual reminders | Yes | Ordinary accounts | No | No |
+| Grant/revoke Super Admin or manage those accounts | Yes, except protected developer | No | No | No |
+| Answer usage reviews | Assigned owner only | Assigned owner only | Assigned owner only | Assigned owner only |
+
+Super Admin includes existing Admin and Finance capabilities. Ordinary Admins cannot promote themselves, grant Super Admin, downgrade or restrict a Super Admin, or edit its memberships. Only Super Admins manage other elevated accounts. Membership and role checks are enforced by PostgreSQL RLS, profile/membership triggers, guarded RPCs and server actions, in addition to UI controls. Signup metadata cannot assign roles or activation, and invitation roles remain Admin/Finance/Staff; invitees must finish password setup before an active account can be elevated separately. Role changes remain in audit history.
+
+The protected developer is the existing **ruban.peppin@caedm.ca** identity. Its UUID is pinned in a private, client-inaccessible table, rather than granting authority based on a user-editable email or metadata. Other application administrators, including delegated Super Admins, cannot change its access or memberships. Its role must remain Super Admin and its status active; identity changes and deletion are blocked. The developer can manage its own department memberships, subject to ownership-transfer rules. Additional Super Admins do not inherit permanent developer protection. Last-active-Super-Admin and administrator guards prevent accidental lockout. Financial history and exact review ownership are preserved for all roles. These application protections do not replace control of Supabase/Vercel infrastructure by authorized operators.
+
+Before deploying this role feature, review and apply **202610280003_super_admin_role.sql** and **202610280004_super_admin_permissions.sql** in order to the explicitly selected project. The enum migration must commit before the permissions migration uses it. The permissions migration elevates and pins the developer only if that existing account is already verified, active and has completed any invitation; it never creates a user or approves a pending registration. For a fresh installation, first verify and approve the designated account through the normal operator bootstrap, then run **supabase/bootstrap-super-admin.sql** as the database administrator. That helper is revoked from anonymous, authenticated and service roles and cannot be invoked by an application action. No new environment secret is required. Deploy the application after the migrations and verify both protected developer and ordinary Admin access before rollout.
+
+To grant Super Admin after deployment, sign in as a verified active Super Admin, open **Team Management → Registered accounts**, choose an existing verified active employee, select **Super Admin**, and confirm **Update access**. To revoke another non-protected person's elevation, select Admin/Finance/Staff; assign departments if changing them to Staff. Use suspended/deactivated to restrict a non-protected account when needed.
 
 ## Developer contact and feature requests
 
@@ -142,6 +165,8 @@ The protected scheduled job at **POST `/api/jobs/feature-requests`** sends up to
 The database allows five new requests per employee per hour. A per-form key prevents duplicate submissions. Exclusive five-minute delivery leases prevent concurrent sends; failed deliveries become eligible for an automatic retry after five minutes, with a maximum of five attempts. Employees can also queue a retry after a one-minute cooldown. Requests remain saved if SMTP fails. As with other SMTP workers, a process failure after SMTP acceptance but before recording success can result in a duplicate; the stable Message-ID helps downstream deduplication.
 
 Before deploying this feature, review and apply **202610280001_feature_requests.sql** and **202610280002_feature_request_queue.sql**, in order, to the explicitly selected hosted project. Then deploy the application, verify Production `EMAIL_PROVIDER=smtp`, the existing SMTP variables, service credential and `CRON_SECRET`, and enable the protected scheduler. No additional secret variables are required. Verify a real feature email in the intended mailbox after deployment. Local `dev:local` captures these emails in Mailpit at http://127.0.0.1:54324 and does not send to external recipients.
+
+If `/request-feature` shows "Feature requests are temporarily unavailable", the request-history query failed; this message is separate from SMTP delivery. Inspect the safe database error code in server logs. `PGRST205` indicates the table is absent from the API schema cache: confirm the selected hosted project has both feature-request migrations and the expected table/columns before refreshing the API schema cache. Pushing application code to GitHub/Vercel does not apply Supabase migrations. Do not apply unreviewed later role migrations just to repair the already-released feature table. If the CLI cannot connect to the project pooler, an authorized operator can use the selected project's SQL Editor or restore the approved database network connection and rerun the versioned migration process. A missing scheduler leaves submitted requests queued; it does not hide the form.
 
 ## Workflows
 
@@ -168,7 +193,7 @@ Unique review/recipient/message constraints and transaction locks prevent normal
 
 ## Verification
 
-Last verified locally on October 28, 2026: TypeScript and ESLint passed; 57 unit tests, 50 database tests, and all 15 real local-Supabase browser workflows passed; the production build passed. All eight migrations were applied to the isolated local stack. Browser tests include branded invitations with embedded logo MIME parts and feature emails captured in Mailpit, password setup, department access, invitation replay/resend/revocation, pending employee feature requests without workspace access, protected email jobs and retry queueing, plus logo loading, help search, keyboard focus, Escape dismissal and contextual guidance. Desktop and mobile email and application branding were visually reviewed. External SMTP delivery and hosted deployment require separate verification.
+Last verified locally on October 28, 2026: TypeScript and ESLint passed; 60 unit tests, 64 database tests, and all 18 real local-Supabase browser workflows passed; the production build passed. All ten migrations were applied to the isolated local stack. Database tests cover the protected developer bootstrap, direct SQL/RLS escalation denials, Super Admin/member guards, invitation restrictions and preservation of real fixture expense history during upgrade. Browser tests include Super Admin grants/revocation, Admin denial and a mobile four-role Help comparison, branded invitations with embedded logo MIME parts and feature emails captured in Mailpit, password setup, department access, invitation replay/resend/revocation, pending employee feature requests without workspace access, protected email jobs and retry queueing, plus logo loading, help search, keyboard focus, Escape dismissal and contextual guidance. Desktop and mobile email and application branding were visually reviewed. External SMTP delivery and hosted deployment require separate verification.
 
 ```powershell
 npm run check
@@ -206,7 +231,7 @@ No development account or client-side demo mode bypasses production authorizatio
 - [ ] Configure application SMTP; verify a real reminder and Finance response/escalation notification.
 - [ ] Schedule protected POST `/api/jobs/feature-requests` every five minutes and verify a real feature request email, Reply-To and delivery status with active and pending accounts.
 - [ ] Run checks, migration/RLS tests, production build, and local browser suite.
-- [ ] Smoke test real deployment with pending, Staff, Finance, and Admin accounts including direct API/export denials.
+- [ ] Smoke test real deployment with pending, Staff, Finance, Admin and Super Admin accounts including direct API/export denials, elevation/revocation and protected developer restrictions.
 - [ ] Configure daily timezone-aware authenticated POST schedule and monitoring for failures/backlog.
 - [ ] Configure database backups, retention/access review, credential rotation, and incident ownership.
 - [ ] Review CSP if using a custom Supabase domain; current connections allow Supabase-hosted domains and local development endpoints. Confirm proxy/host origin configuration and HTTPS at the deployment edge.

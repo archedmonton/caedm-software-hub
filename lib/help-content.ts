@@ -1,7 +1,8 @@
-import type { Profile } from "@/lib/domain";
+import { adminRole, financeRole, type Profile } from "@/lib/domain";
 import { developer } from "@/lib/developer";
 export type HelpCategory =
   | "Getting started"
+  | "Roles & access"
   | "Software"
   | "Renewals & reviews"
   | "Finance"
@@ -12,9 +13,173 @@ export type HelpArticle = {
   title: string;
   summary: string;
   steps: string[];
-  access?: "workspace" | "finance" | "admin";
+  access?: "workspace" | "finance" | "admin" | "super_admin";
+  roleComparison?: boolean;
 };
+export const roleCapabilities = [
+  {
+    capability: "View software, costs and renewals",
+    super_admin: "All departments",
+    admin: "All departments",
+    finance: "All departments",
+    staff: "Assigned departments",
+  },
+  {
+    capability: "Add, edit, pause, cancel or archive software",
+    super_admin: "All departments",
+    admin: "All departments",
+    finance: "All departments",
+    staff: "Manage permission required",
+  },
+  {
+    capability: "Record/correct expenses and export reports",
+    super_admin: "Yes",
+    admin: "Yes",
+    finance: "Yes",
+    staff: "No",
+  },
+  {
+    capability: "Manage vendors and payment references",
+    super_admin: "Yes",
+    admin: "Yes",
+    finance: "Yes",
+    staff: "No",
+  },
+  {
+    capability: "Invite and approve ordinary employees",
+    super_admin: "Yes",
+    admin: "Yes",
+    finance: "No",
+    staff: "No",
+  },
+  {
+    capability: "Create departments and assign access",
+    super_admin: "Yes",
+    admin: "Ordinary accounts",
+    finance: "No",
+    staff: "No",
+  },
+  {
+    capability: "Configure organization settings and run reminders",
+    super_admin: "Yes",
+    admin: "Yes",
+    finance: "No",
+    staff: "No",
+  },
+  {
+    capability: "Grant/revoke Super Admin or manage those accounts",
+    super_admin: "Yes, except protected developer",
+    admin: "No",
+    finance: "No",
+    staff: "No",
+  },
+  {
+    capability: "Respond to a usage review",
+    super_admin: "Assigned owner only",
+    admin: "Assigned owner only",
+    finance: "Assigned owner only",
+    staff: "Assigned owner only",
+  },
+  {
+    capability: "Request features and check own submissions",
+    super_admin: "Yes",
+    admin: "Yes",
+    finance: "Yes",
+    staff: "Yes",
+  },
+] as const;
 export const helpArticles: HelpArticle[] = [
+  {
+    id: "roles-overview",
+    category: "Roles & access",
+    title:
+      "What is the difference between Super Admin, Admin, Finance and Staff?",
+    summary:
+      "Your account role controls organization-wide capabilities. Department permissions control Staff access. Software ownership controls who answers usage reviews.",
+    roleComparison: true,
+    steps: [
+      "Super Admin has all Admin and Finance capabilities and can grant, revoke or manage other Super Admin accounts. The protected developer account remains active and cannot be demoted, suspended or removed by another application administrator.",
+      "Admin manages ordinary employees, roles, invitations, approvals, departments, organization settings and reminders. Admin also has organization-wide software and Finance access, but cannot grant Super Admin or change a Super Admin account or its department memberships.",
+      "Finance has organization-wide software, renewal, expense, reporting, vendor and payment-reference access. Finance cannot invite or approve employees, change roles or department memberships, create departments, or configure organization reminder rules.",
+      "Staff can see software, subscription prices and renewals only in assigned departments. View permission is read-only; Manage permission allows software changes in that department. Staff cannot access recorded expenses, Finance Centre, exports or employee administration.",
+      "All workspace roles require a verified, active CAEDM account. Being invited, verifying an email, or choosing a role in registration metadata does not itself approve access. Pending accounts can use Help and submit feature requests after verification, but cannot enter the workspace.",
+      "Admin, Finance and Super Admin access is organization-wide even without department memberships. Assigning a department does not narrow these roles' access. A department name entered in a feature request does not grant membership.",
+      "Software ownership is separate: only the assigned owner can answer a usage review, and only once. Ownership does not grant software editing or expense access. Historical financial records remain preserved for every role.",
+      "Open Settings to see your own role and status. Contact your Admin or Super Admin if the assigned role or department is incorrect. New access is checked again on subsequent requests; refresh or sign in again after an authorized change.",
+    ],
+  },
+  {
+    id: "staff-access",
+    category: "Roles & access",
+    title: "How do Staff View, Manage and software ownership differ?",
+    summary:
+      "Staff permissions are assigned separately for each department; a person can belong to multiple departments.",
+    steps: [
+      "View department software allows reading the assigned department's dashboard data, software details, subscription costs and renewal projections. It does not allow changing software.",
+      "View and manage department software allows creating and editing department software, managing seats, billing and license details, transferring valid ownership, and pausing, cancelling or archiving records. It does not grant Finance or employee administration access.",
+      "The responsible software owner receives usage reviews. An owner must also have access to that software's department to respond. A view-only member can answer their assigned review without gaining edit permission.",
+      "An Admin or Super Admin assigns memberships through Team Management. Transfer active software ownership before removing department access. Removing an unrelated membership does not delete financial or software history.",
+      "Recorded expenses and CSV/Excel exports are restricted to Finance, Admin and Super Admin, even when Staff can view the subscription's price. For broader access, request an appropriate role change rather than sharing another person's account.",
+    ],
+  },
+  {
+    id: "finance-access",
+    category: "Roles & access",
+    title: "What can Finance do, and what requires an Admin?",
+    summary:
+      "Finance coordinates organization-wide software stewardship and confirmed spending without controlling employee access.",
+    steps: [
+      "Review and manage software, owners, renewals, subscription costs and licenses across all departments. Department membership is not required and does not limit Finance visibility.",
+      "Record and correct confirmed expenses, view financial and audit information, export Software Register and Expense Report CSV/Excel files, and maintain vendors and limited payment references.",
+      "Keep confirmed transactions separate from projected payments. Currencies remain separate; no role can use the application to discard recorded financial history or automatically cancel a contract with a vendor.",
+      "Finance can read usage reviews and receives response/escalation notifications, but can answer a review only when assigned as its owner. Requesting a new review manually and running reminders require Admin or Super Admin.",
+      "Contact an Admin or Super Admin for employee invitations, approvals, department creation, memberships, role changes and organization settings. Contact a Super Admin for any Super Admin account change.",
+    ],
+  },
+  {
+    id: "admin-access",
+    category: "Roles & access",
+    title: "What can Admin manage, and what is protected?",
+    summary:
+      "Admin has Finance capabilities plus ordinary employee and organization administration.",
+    steps: [
+      "Invite new employees, resend or revoke unused invitations, approve verified registrations, and assign Admin, Finance or Staff roles and account status to ordinary accounts.",
+      "Create departments, grant View or Manage department memberships, remove eligible memberships after ownership transfer, configure reporting currencies and reminder rules, and run reminders or request usage reviews.",
+      "Admin cannot assign Super Admin, promote itself, downgrade or suspend a Super Admin, or add, change or remove a Super Admin's department memberships. Those accounts are read-only for Admins.",
+      "The developer account for Ruban Peppin is protected. Other application administrators, including delegated Super Admins, cannot demote, suspend or remove its access. Protection is enforced by PostgreSQL as well as the screen controls.",
+      "Assign the minimum access needed for the person's work. Use Staff plus Manage for a departmental software editor, Finance for organization-wide software and expenses, and Admin for ordinary employee administration.",
+    ],
+  },
+  {
+    id: "super-admin-access",
+    category: "Roles & access",
+    title: "What is Super Admin and how is the developer protected?",
+    summary:
+      "Super Admin adds control of other privileged accounts to all Admin and Finance capabilities.",
+    steps: [
+      "An active Super Admin can grant Super Admin access to an existing verified, active CAEDM employee and can revoke that role or restrict other non-protected Super Admin accounts.",
+      "The existing developer identity ruban.peppin@caedm.ca is pinned to its database account when protected access is initialized. No automatic Super Admin privilege is granted during registration, from editable signup metadata, or just because an email matches the developer contact.",
+      "The protected developer must remain active with Super Admin access. Another application administrator cannot change its account access or department memberships. Additional Super Admins do not inherit this permanent developer protection.",
+      "New employees first accept a normal Admin, Finance or Staff invitation and set their own password. Super Admin is granted afterwards; invitation links never grant that role directly.",
+      "The application retains at least one verified active Super Admin and at least one active administrative account. Role changes are audited. Super Admin still follows verification, review-owner rules and financial history retention.",
+      "Application roles do not administer Vercel, Supabase project ownership, SMTP passwords or infrastructure. Recovery of a protected account is an authorized database-operator task, not an ordinary Team Management action.",
+    ],
+  },
+  {
+    id: "grant-super-admin",
+    category: "Roles & access",
+    access: "super_admin",
+    title: "How do I grant or revoke Super Admin access?",
+    summary:
+      "Only a verified, active Super Admin can perform these changes for a non-protected account.",
+    steps: [
+      "Invite the employee normally or approve their verified registration first. If they have an invitation, they must complete password setup before activation.",
+      "Open Team Management and find the person under Registered accounts. Confirm the work email, active status and intended responsibilities before granting privileged access.",
+      "Select Super Admin in Role, keep Status active, choose Update access and confirm. The employee should refresh or sign in again to see the new controls. The change is recorded in audit history.",
+      "To revoke elevated access, select Admin, Finance or Staff and confirm Update access. If choosing Staff, also assign the departments and View/Manage permissions they need. Use suspended or deactivated to restrict a non-protected account when necessary.",
+      "You cannot downgrade, suspend or remove the protected developer account, and the last active Super Admin cannot be removed. Contact the developer or authorized database operator for recovery issues.",
+    ],
+  },
   {
     id: "sign-in",
     category: "Getting started",
@@ -128,7 +293,7 @@ export const helpArticles: HelpArticle[] = [
       "Staff can view software in their assigned departments. A view-only membership does not allow edits.",
       "A department membership with manage permission allows software changes within that department. Being an owner does not itself grant management permission.",
       "The assigned owner responds to usage reviews. Ask your administrator to correct department access or ownership if needed.",
-      "Finance and Administrator roles can access organization-wide records. Missing navigation items may reflect your role.",
+      "Finance, Admin and Super Admin roles can access organization-wide records. Missing navigation items may reflect your role. See Roles & access for the full comparison.",
     ],
   },
   {
@@ -245,7 +410,7 @@ export const helpArticles: HelpArticle[] = [
     summary: "Manage verified registered accounts in Team Management.",
     steps: [
       "Find the employee under Registered accounts. Confirm that their email has been verified before approval.",
-      "Select the appropriate role and account status, then Update access. Assign their department separately when using self-registration.",
+      "Select the appropriate ordinary role and account status, then Update access. Assign their department separately when using self-registration. Only Super Admins can grant or manage Super Admin access after an account becomes active.",
       "Use suspended or deactivated status to restrict access when required. Keep at least one verified active administrator.",
       "An account with an unfinished invitation must complete its password setup before activation.",
     ],
@@ -260,7 +425,7 @@ export const helpArticles: HelpArticle[] = [
       "Create the department, then choose the employee and department under Assign department access.",
       "Choose View department software for read-only access, or View and manage for software changes.",
       "People can belong to more than one department. Remove only the memberships they no longer need.",
-      "Finance and Administrators have organization-wide access regardless of their assigned department. Assign software owners from each software record's edit form.",
+      "Finance, Admin and Super Admin have organization-wide access regardless of assigned department. Admins cannot change Super Admin memberships, and only the protected developer can change its own memberships. Assign software owners from each software record's edit form.",
     ],
   },
   {
@@ -332,8 +497,9 @@ export function visibleHelpArticles(role?: Profile["role"]) {
     (a) =>
       !a.access ||
       (a.access === "workspace" && !!role) ||
-      (a.access === "finance" && (role === "finance" || role === "admin")) ||
-      (a.access === "admin" && role === "admin"),
+      (a.access === "finance" && !!role && financeRole(role)) ||
+      (a.access === "admin" && !!role && adminRole(role)) ||
+      (a.access === "super_admin" && role === "super_admin"),
   );
 }
 export function helpContext(path: string) {

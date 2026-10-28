@@ -7,7 +7,16 @@ import {
 } from "date-fns";
 import { z } from "zod";
 
-export const roles = ["admin", "finance", "staff"] as const;
+export const roles = ["super_admin", "admin", "finance", "staff"] as const;
+export const roleLabels: Record<(typeof roles)[number], string> = {
+  super_admin: "Super Admin",
+  admin: "Admin",
+  finance: "Finance",
+  staff: "Staff",
+};
+export function adminRole(role: string) {
+  return role === "super_admin" || role === "admin";
+}
 export const statuses = [
   "trial",
   "active",
@@ -335,7 +344,7 @@ export function dueIn(dateValue: string, reference = today()) {
   return differenceInCalendarDays(parseISO(dateValue), parseISO(reference));
 }
 export function financeRole(role: string) {
-  return role === "admin" || role === "finance";
+  return adminRole(role) || role === "finance";
 }
 export function safeCell(value: unknown): string {
   const text = String(value ?? "");

@@ -2451,3 +2451,57 @@ body:has(.help-dialog[open]) {
     font-size: 10px;
   }
 }
+
+.help-role-comparison {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 18px 0;
+  border: 1px solid #e8dfe3;
+  border-radius: 8px;
+  outline-offset: 3px;
+}
+.help-role-comparison table {
+  width: 100%;
+  min-width: 690px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.help-role-comparison caption {
+  padding: 12px;
+  text-align: left;
+  color: #626b78;
+  background: #ffffff;
+}
+.help-role-comparison th,
+.help-role-comparison td {
+  padding: 12px;
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: break-word;
+  font-size: 12px;
+  letter-spacing: normal;
+  text-transform: none;
+  border-bottom: 1px solid #e8dfe3;
+}
+.help-role-comparison thead th {
+  background: #860038;
+  color: #ffffff;
+}
+.help-role-comparison thead th:first-child {
+  width: 175px;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.help-role-comparison tbody th {
+  width: 175px;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #faf7f8;
+  font-weight: 600;
+}
