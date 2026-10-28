@@ -5,6 +5,7 @@ import {
   invitationToken,
   professionalSender,
 } from "@/lib/invitation-content";
+import { emailBrand } from "@/lib/email-brand";
 const invite = {
   id: "test",
   email: "employee@caedm.ca",
@@ -39,11 +40,57 @@ describe("invitation email and inputs", () => {
     expect(mail.html).toContain("Alex &lt;script&gt;");
     expect(mail.html).not.toContain("<script>");
     expect(mail.html).toContain("Mission &amp; Services");
-    expect(mail.text).toContain("expires in 72 hours");
-    expect(mail.html).not.toMatch(/<img|<script|<iframe/);
+    expect(mail.text).toContain(
+      "October 31, 2026 at 6:00 p.m. (Edmonton time)",
+    );
+    expect(mail.html).toContain(
+      "October 31, 2026 at 6:00 p.m. (Edmonton time)",
+    );
+    expect(mail.html).not.toMatch(/<script|<iframe/);
+    expect(mail.html).toContain(`src="cid:${emailBrand.logoCid}"`);
+    expect(mail.html.match(/<img\b/g)).toHaveLength(1);
+    expect(mail.html).not.toMatch(/src=["'](?:https?:|data:)/);
+    expect(mail.inlineBrandLogo).toBe(true);
+    expect(mail.replyTo).toBe("ruban.peppin@caedm.ca");
+    expect(mail.html).toContain("#860038");
+    expect(mail.html).toContain("#E5C047");
+    expect(mail.html).toContain("#005493");
     expect(mail.text).toContain("/accept-invitation#token=" + token);
     expect(mail.html).toContain("/accept-invitation#token=" + token);
     expect(mail.text).not.toContain("?token=");
+  });
+  test.each([
+    ["staff", "Staff"],
+    ["finance", "Finance"],
+    ["admin", "Administrator"],
+  ])("uses a clear %s role label in HTML and plain text", (role, label) => {
+    const mail = invitationMessage(
+      { ...invite, role },
+      "https://caedm-software-hub.vercel.app",
+      token,
+    );
+    expect(mail.text).toContain(`Access role: ${label}`);
+    expect(mail.html).toContain(`>${label}</td>`);
+  });
+  test("shows the actual expiry across Edmonton's daylight-saving boundary", () => {
+    const mail = invitationMessage(
+      { ...invite, expires_at: "2026-11-02T00:00:00Z" },
+      "https://caedm-software-hub.vercel.app",
+      token,
+    );
+    expect(mail.text).toContain(
+      "November 1, 2026 at 5:00 p.m. (Edmonton time)",
+    );
+    expect(mail.html).toContain(
+      "November 1, 2026 at 5:00 p.m. (Edmonton time)",
+    );
+    expect(() =>
+      invitationMessage(
+        { ...invite, expires_at: "invalid" },
+        "https://caedm-software-hub.vercel.app",
+        token,
+      ),
+    ).toThrow("expiry");
   });
   test("rejects malformed secrets and insecure remote origins", () => {
     expect(() => invitationToken.parse("short")).toThrow();

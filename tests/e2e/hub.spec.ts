@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
 test.describe.configure({ mode: "serial" });
 const raw = execFileSync(
@@ -546,6 +546,78 @@ test("administrator invitation sends branded mail and requires password setup be
   const mail = await capturedInvitation(email);
   expect(mail.from.Name).toBe("CAEDM Software Hub");
   expect(mail.html).toContain("Accept invitation");
+  expect(mail.html).toContain('src="cid:caedm-logo@software-hub.caedm.ca"');
+  expect(mail.html).toContain("#860038");
+  expect(mail.html).toContain("#E5C047");
+  expect(mail.html).toContain("Edmonton time");
+  const rawInvitation = await (
+    await fetch(
+      `${config.MAILPIT_URL || config.INBUCKET_URL}/api/v1/message/${mail.id}/raw`,
+    )
+  ).text();
+  expect(
+    rawInvitation.includes("Content-ID: <caedm-logo@software-hub.caedm.ca>"),
+  ).toBe(true);
+  expect(rawInvitation.includes("Content-Type: image/png")).toBe(true);
+  expect(rawInvitation.includes("Content-Disposition: inline;")).toBe(true);
+  expect(rawInvitation.includes("Reply-To: ruban.peppin@caedm.ca")).toBe(true);
+  // Preview with an inert placeholder link rather than persist a working token.
+  const logo = await readFile("lib/assets/caedm-logo.png");
+  const previewHtml = mail.html
+    .replaceAll(
+      mail.url,
+      "https://caedm-software-hub.vercel.app/accept-invitation#token=" +
+        "0".repeat(64),
+    )
+    .replaceAll(email, "employee@caedm.ca")
+    .replace(
+      "cid:caedm-logo@software-hub.caedm.ca",
+      `data:image/png;base64,${logo.toString("base64")}`,
+    );
+  await writeFile(".artifacts/invitation-email-preview.html", previewHtml);
+  const previewContext = await browser.newContext();
+  try {
+    const preview = await previewContext.newPage();
+    await preview.setViewportSize({ width: 760, height: 1000 });
+    await preview.setContent(previewHtml);
+    await expect(
+      preview.getByRole("img", {
+        name: "The Catholic Archdiocese of Edmonton",
+      }),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        preview
+          .locator("img")
+          .evaluate((el) => (el as HTMLImageElement).naturalWidth),
+      )
+      .toBeGreaterThan(0);
+    await preview.screenshot({
+      path: ".artifacts/invitation-email-desktop.png",
+      fullPage: true,
+      animations: "disabled",
+    });
+    await preview.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await preview.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await preview.screenshot({
+      path: ".artifacts/invitation-email-mobile.png",
+      fullPage: true,
+      animations: "disabled",
+    });
+    await preview.locator("img").evaluate((el) => el.remove());
+    await expect(
+      preview.getByRole("heading", { name: "You are invited to Software Hub" }),
+    ).toBeVisible();
+    await expect(
+      preview.getByRole("link", { name: "Accept invitation", exact: true }),
+    ).toBeVisible();
+  } finally {
+    await previewContext.close();
+  }
   const { data: before } = await admin
     .from("employee_invitations")
     .select("id,status,token_hash")

@@ -1,6 +1,9 @@
 import "server-only";
 import nodemailer from "nodemailer";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { professionalSender } from "@/lib/invitation-content";
+import { emailBrand } from "@/lib/email-brand";
 export type Message = {
   id: string;
   to: string;
@@ -8,6 +11,7 @@ export type Message = {
   text: string;
   html?: string;
   replyTo?: string;
+  inlineBrandLogo?: boolean;
 };
 export interface EmailProvider {
   name: string;
@@ -32,6 +36,20 @@ export function emailProvider(): EmailProvider {
       text: message.text,
       html: message.html,
       replyTo: message.replyTo,
+      attachments:
+        message.inlineBrandLogo && message.html
+          ? [
+              {
+                filename: emailBrand.logoFilename,
+                content: readFileSync(
+                  join(process.cwd(), "lib", "assets", "caedm-logo.png"),
+                ),
+                contentType: "image/png",
+                contentDisposition: "inline",
+                cid: emailBrand.logoCid,
+              },
+            ]
+          : undefined,
       messageId: `<${message.id}@${from.address.split("@")[1]}>`,
     });
   if (provider === "local") {
