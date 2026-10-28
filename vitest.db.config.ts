@@ -5,6 +5,7 @@ export default defineConfig({
       "tests/database.test.mjs",
       "tests/reminders.test.mjs",
       "tests/invitations.test.mjs",
+      "tests/feature-requests.test.mjs",
     ],
     testTimeout: 15000,
   },

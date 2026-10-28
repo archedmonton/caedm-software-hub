@@ -1,4 +1,5 @@
 import type { Profile } from "@/lib/domain";
+import { developer } from "@/lib/developer";
 export type HelpCategory =
   | "Getting started"
   | "Software"
@@ -293,13 +294,24 @@ export const helpArticles: HelpArticle[] = [
     id: "support",
     category: "Getting started",
     title: "What should I send when asking for help?",
-    summary:
-      "Contact your CAEDM workspace administrator with enough detail to reproduce the issue.",
+    summary: `Contact ${developer.name}, ${developer.title}, at ${developer.email} with enough detail to reproduce the issue.`,
     steps: [
       "Include the page name, the action you were trying to complete, the time, and the exact error message.",
       "For missing records, mention the expected department and software name. Your role and department may limit what you can see.",
       "Share a screenshot only after hiding financial or personal details that are not needed.",
       "Never share passwords, invitation links or other access credentials.",
+    ],
+  },
+  {
+    id: "feature-request",
+    category: "Getting started",
+    title: "How do I request a feature or contact the developer?",
+    summary: `For a hand with Software Hub, contact ${developer.name} at ${developer.email}.`,
+    steps: [
+      "Choose Request a Feature in Help to open the professional request form. Sign in with a verified CAEDM account; active employees and employees awaiting approval are eligible.",
+      "Give the request a clear title and explain the problem, proposed improvement, expected benefit and priority. Your verified name and email are included automatically.",
+      "Your request is saved and queued for a background email to Ruban for review. Refresh Your recent requests to check delivery. Failed emails retry automatically; you can also queue a retry after at least one minute. You can submit up to five requests per hour, with up to five email attempts per request.",
+      "Keep your request reference for follow-up. Please do not include passwords, invitation links or confidential financial information.",
     ],
   },
   {
@@ -325,6 +337,8 @@ export function visibleHelpArticles(role?: Profile["role"]) {
   );
 }
 export function helpContext(path: string) {
+  if (path.startsWith("/request-feature"))
+    return { id: "feature-request", page: "requesting a feature" };
   if (path.startsWith("/accept-invitation"))
     return { id: "invitation", page: "accepting your invitation" };
   if (path.startsWith("/pending-approval"))

@@ -48,7 +48,7 @@ Reset removes this local project's accounts and records. Never use it against a 
 | `NEXT_PUBLIC_SUPABASE_URL`             | Supabase API URL                                                                            |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public publishable key, or legacy anon key                                                  |
 | `APP_URL`                              | Canonical application origin; HTTPS required in production                                  |
-| `SUPABASE_SERVICE_ROLE_KEY`            | Server only: durable authentication throttling, invitation onboarding and reminder worker   |
+| `SUPABASE_SERVICE_ROLE_KEY`            | Server only: authentication throttling, invitation onboarding and scheduled email workers    |
 | `CRON_SECRET`                          | Server only: random secret of at least 32 characters for scheduled POST requests            |
 | `EMAIL_PROVIDER`                       | `local` in development, `smtp` for production delivery                                      |
 | `EMAIL_FROM`                           | Verified sender identity configured with your SMTP provider                                 |
@@ -56,7 +56,7 @@ Reset removes this local project's accounts and records. Never use it against a 
 | `SMTP_USER`, `SMTP_PASSWORD`           | Server only SMTP credentials, when required                                                 |
 | `DATABASE_URL`                         | Optional direct PostgreSQL connection for external tooling; not used by application queries |
 
-Never prefix server secrets with `NEXT_PUBLIC_`. Never commit environment files or paste live credentials into logs. Ordinary business queries always use the signed-in user's Supabase client and RLS. The service credential is isolated to authentication throttling, administrator-controlled invitation onboarding and reminder delivery. Missing Supabase setup produces a setup screen; production authentication fails closed if durable throttling is not configured. Local authentication uses a bounded in-memory limiter without the service key; Supabase Auth has its own rate limits in addition.
+Never prefix server secrets with `NEXT_PUBLIC_`. Never commit environment files or paste live credentials into logs. Ordinary business queries always use the signed-in user's Supabase client and RLS. The service credential is isolated to authentication throttling, administrator-controlled invitation onboarding and scheduled email delivery. Missing Supabase setup produces a setup screen; production authentication fails closed if durable throttling is not configured. Local authentication uses a bounded in-memory limiter without the service key; Supabase Auth has its own rate limits in addition.
 
 ## Supabase configuration
 
@@ -123,7 +123,21 @@ The shared Brand component uses the supplied full-color logo at lib/assets/caedm
 
 The Help icon appears on sign-in, registration, password recovery, invitation, approval and setup screens, and in the workspace header. It opens a searchable guide with topic filters, expandable step-by-step answers and guidance for the current page. Public help explains account access and missing emails. Authenticated Staff, Finance and Administrators receive guidance for their available workflows. Help is informational; authorization remains enforced by existing server actions and database policies.
 
-The native modal supports keyboard focus containment, Escape, a close button and focus restoration, with a scrollable answer area on smaller screens. Help text lives in lib/help-content.ts; update it whenever a workflow changes. Contact guidance refers employees to their CAEDM workspace administrator and does not collect passwords, links or support messages.
+The native modal supports keyboard focus containment, Escape, a close button and focus restoration, with a scrollable answer area on smaller screens. Help text lives in lib/help-content.ts; update it whenever a workflow changes. Every Help screen includes Developer Information for **Ruban Peppin**, a mail link to **ruban.peppin@caedm.ca**, and **Request a Feature**. The contact is shared in lib/developer.ts. Help itself is an informational guide; the separate feature form stores submitted suggestions.
+
+## Developer contact and feature requests
+
+Open **Help → Request a Feature**, or `/request-feature`. Verified CAEDM employees with active accounts **or accounts awaiting approval** can submit. Unverified, rejected, suspended and deactivated accounts cannot. PostgreSQL checks the Auth email, profile identity and status as well as the server action. Pending employees retain their existing workspace restrictions.
+
+The form collects a title, application area, priority, optional department, problem, proposed improvement, expected benefit and optional workaround. The verified account supplies the sender's identity automatically. Requests are saved before email delivery, receive a reference, and appear in the requester's ten most recent submissions. The message goes only to **ruban.peppin@caedm.ca**, with **CAEDM Software Hub** as the sender display name and the requester's verified address as Reply-To. Both branded HTML and plain text are provided. Do not submit credentials or confidential financial details.
+
+Submission, history and retry queueing use the signed-in user's client. Requests are private to their eligible owner and verified active administrators under RLS; Finance does not gain access to other employees' suggestions. Audit entries contain delivery metadata rather than request text, contact details or delivery secrets. Ordinary clients cannot claim deliveries or mark an email as sent.
+
+The protected scheduled job at **POST `/api/jobs/feature-requests`** sends up to three queued messages per run. Configure a scheduler supporting POST to invoke it **every five minutes**, with `Authorization: Bearer <CRON_SECRET>` supplied from secret storage. It uses the existing server-only `SUPABASE_SERVICE_ROLE_KEY` and application SMTP configuration; Supabase Auth SMTP is separate. Without this scheduler, requests remain saved and queued. Monitor job failures and pending/failed request statuses; sustained queues need more frequent runs or an appropriate worker batch/duration adjustment.
+
+The database allows five new requests per employee per hour. A per-form key prevents duplicate submissions. Exclusive five-minute delivery leases prevent concurrent sends; failed deliveries become eligible for an automatic retry after five minutes, with a maximum of five attempts. Employees can also queue a retry after a one-minute cooldown. Requests remain saved if SMTP fails. As with other SMTP workers, a process failure after SMTP acceptance but before recording success can result in a duplicate; the stable Message-ID helps downstream deduplication.
+
+Before deploying this feature, review and apply **202610280001_feature_requests.sql** and **202610280002_feature_request_queue.sql**, in order, to the explicitly selected hosted project. Then deploy the application, verify Production `EMAIL_PROVIDER=smtp`, the existing SMTP variables, service credential and `CRON_SECRET`, and enable the protected scheduler. No additional secret variables are required. Verify a real feature email in the intended mailbox after deployment. Local `dev:local` captures these emails in Mailpit at http://127.0.0.1:54324 and does not send to external recipients.
 
 ## Workflows
 
@@ -150,7 +164,7 @@ Unique review/recipient/message constraints and transaction locks prevent normal
 
 ## Verification
 
-Last verified locally on October 27, 2026: TypeScript and ESLint passed; 40 unit tests, 37 database tests, and all 13 real local-Supabase browser workflows passed; the production build passed. All six migrations were applied to the isolated local stack. Browser tests include branded invitation delivery, password setup, department access, replay prevention, resend and revocation, plus logo loading, help search, keyboard focus, Escape dismissal and contextual guidance for Staff, Finance and Administrators. Desktop and mobile branding were visually reviewed. External SMTP delivery and hosted deployment require separate verification.
+Last verified locally on October 28, 2026: TypeScript and ESLint passed; 53 unit tests, 50 database tests, and all 15 real local-Supabase browser workflows passed; the production build passed. All eight migrations were applied to the isolated local stack. Browser tests include branded invitations and feature emails captured in Mailpit, password setup, department access, invitation replay/resend/revocation, pending employee feature requests without workspace access, protected email jobs and retry queueing, plus logo loading, help search, keyboard focus, Escape dismissal and contextual guidance. Desktop and mobile branding were visually reviewed. External SMTP delivery and hosted deployment require separate verification.
 
 ```powershell
 npm run check
@@ -186,6 +200,7 @@ No development account or client-side demo mode bypasses production authorizatio
 - [ ] Bootstrap an explicitly designated verified administrator; assign Finance and department access.
 - [ ] Set server secrets in hosting secret storage, including durable throttling credential and a random job secret.
 - [ ] Configure application SMTP; verify a real reminder and Finance response/escalation notification.
+- [ ] Schedule protected POST `/api/jobs/feature-requests` every five minutes and verify a real feature request email, Reply-To and delivery status with active and pending accounts.
 - [ ] Run checks, migration/RLS tests, production build, and local browser suite.
 - [ ] Smoke test real deployment with pending, Staff, Finance, and Admin accounts including direct API/export denials.
 - [ ] Configure daily timezone-aware authenticated POST schedule and monitoring for failures/backlog.

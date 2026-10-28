@@ -249,10 +249,39 @@ test("local reminders create authenticated reviews and the owner can respond", a
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Review requested");
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Run reminders now" }).click();
-  await page.getByRole("button", { name: "Confirm", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Reminder run complete");
-  await expect(page.getByText("initial · local").first()).toBeVisible();
+  const review = await checked(
+    await admin
+      .from("usage_reviews")
+      .select("id")
+      .eq("subscription_id", softwareId)
+      .single(),
+  );
+  if (!review) throw new Error("The test review was not created.");
+  // Reused local databases can have older batches ahead of this run's notification.
+  await expect
+    .poll(
+      async () => {
+        await page.getByRole("button", { name: "Run reminders now" }).click();
+        await page
+          .getByRole("button", { name: "Confirm", exact: true })
+          .click();
+        await expect(page.getByRole("status")).toContainText(
+          "Reminder run complete",
+        );
+        const logs = await checked(
+          await admin
+            .from("notification_logs")
+            .select("status,provider")
+            .eq("review_id", review.id)
+            .eq("kind", "initial"),
+        );
+        return logs?.some(
+          (log) => log.status === "sent" && log.provider === "local",
+        );
+      },
+      { timeout: 60000, intervals: [100, 300] },
+    )
+    .toBe(true);
   await login(page, "staff");
   await page.getByRole("link", { name: /Usage Reviews/ }).click();
   await expect(page).toHaveURL(/\/reviews$/);
@@ -700,6 +729,12 @@ test("CAEDM logo and searchable public help are accessible on desktop and mobile
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: "How can we help?" });
   await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("link", { name: "ruban.peppin@caedm.ca", exact: true }),
+  ).toHaveAttribute("href", "mailto:ruban.peppin@caedm.ca");
+  await expect(
+    dialog.getByRole("link", { name: "Request a Feature", exact: true }),
+  ).toHaveAttribute("href", "/request-feature");
   const search = dialog.getByRole("searchbox", { name: "Search help" });
   await expect(search).toBeFocused();
   await expect(
@@ -833,4 +868,243 @@ test("workspace help follows the current page and shows guidance for each role",
     fullPage: false,
     animations: "disabled",
   });
+});
+
+async function fillFeatureRequest(page: Page, title: string) {
+  await page.getByLabel("Request title", { exact: true }).fill(title);
+  await page
+    .getByLabel("Area of the application")
+    .selectOption("Upcoming Renewals");
+  await page
+    .getByLabel("Department (optional)", { exact: true })
+    .fill("Mission Services");
+  await page
+    .getByLabel("Problem or need", { exact: true })
+    .fill(
+      "Our department needs an easier way to coordinate renewal decisions with the responsible owners.",
+    );
+  await page
+    .getByLabel("Proposed improvement", { exact: true })
+    .fill(
+      "Add a shared department renewal planning view with decision dates and owner reminders.",
+    );
+  await page
+    .getByLabel("Expected benefit", { exact: true })
+    .fill(
+      "This would reduce manual follow-up and help our team decide before cancellation deadlines.",
+    );
+}
+async function featureEmail(title: string, replyTo: string) {
+  let message:
+    { ID: string; Subject: string; To: { Address: string }[] } | undefined;
+  const mailbox = config.MAILPIT_URL || config.INBUCKET_URL;
+  await expect
+    .poll(async () => {
+      const list = await (await fetch(`${mailbox}/api/v1/messages`)).json();
+      message = list.messages?.find(
+        (m: { Subject: string }) => m.Subject === `Feature request: ${title}`,
+      );
+      return !!message;
+    })
+    .toBe(true);
+  expect(message!.To).toEqual([
+    expect.objectContaining({ Address: "ruban.peppin@caedm.ca" }),
+  ]);
+  const raw = await (
+    await fetch(`${mailbox}/api/v1/message/${message!.ID}/raw`)
+  ).text();
+  expect(raw).toContain(`Reply-To: ${replyTo}`);
+  const detail = await (
+    await fetch(`${mailbox}/api/v1/message/${message!.ID}`)
+  ).json();
+  expect(detail.HTML).toContain("Mission Services");
+  expect(detail.HTML).toContain("Proposed improvement");
+}
+async function runFeatureEmailJob(page: Page) {
+  const response = await page.request.post("/api/jobs/feature-requests", {
+    headers: {
+      authorization: `Bearer ${process.env.CRON_SECRET || "local-development-job-secret-at-least-32-characters"}`,
+    },
+  });
+  expect(response.status()).toBe(200);
+}
+test("an active employee requests a feature through Help and Ruban receives a structured local email", async ({
+  page,
+}) => {
+  expect(
+    (await page.request.get("/request-feature", { maxRedirects: 0 })).status(),
+  ).toBe(307);
+  expect((await page.request.post("/api/jobs/feature-requests")).status()).toBe(
+    401,
+  );
+  await login(page, "staff");
+  await page.getByRole("button", { name: "Open help", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("link", { name: "Request a Feature", exact: true })
+    .click();
+  await expect(page).toHaveURL(/request-feature/);
+  await expect(
+    page.getByText(`Submitting as Test staff`, { exact: true }),
+  ).toBeVisible();
+  const title = `Renewal planning for the department ${suffix}`;
+  await fillFeatureRequest(page, title);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({
+    path: ".artifacts/feature-request-desktop.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: ".artifacts/feature-request-mobile.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page
+    .getByRole("button", { name: "Submit feature request", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Thank you for your idea" }),
+  ).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(
+    "saved and queued for email delivery to Ruban Peppin",
+  );
+  const saved = await checked(
+    await admin
+      .from("feature_requests")
+      .select("id,requester_id,requester_email,delivery_status")
+      .eq("title", title)
+      .single(),
+  );
+  if (!saved) throw new Error("The submitted feature request was not saved.");
+  expect(saved).toMatchObject({
+    requester_id: ids.staff,
+    requester_email: emails.staff,
+    delivery_status: "pending",
+  });
+  await runFeatureEmailJob(page);
+  await featureEmail(title, emails.staff);
+  await page.reload();
+  await expect(page.getByText("Email sent", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Your recent requests" })
+      .getByText(title, { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Request title", { exact: true })).toHaveValue(
+    "",
+  );
+  // Simulate a retained failed delivery in this isolated local test record.
+  await checked(
+    await admin
+      .from("feature_requests")
+      .update({
+        delivery_status: "failed",
+        email_sent_at: null,
+        delivery_error: "Email delivery failed; retry later.",
+        last_attempt_at: new Date(Date.now() - 120000).toISOString(),
+      })
+      .eq("id", saved.id),
+  );
+  await page.reload();
+  const row = page
+    .getByRole("article")
+    .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
+  await row
+    .getByRole("button", { name: "Retry email delivery", exact: true })
+    .click();
+  await expect(row.getByRole("status")).toContainText(
+    "queued for email delivery",
+  );
+  await runFeatureEmailJob(page);
+  await page.reload();
+  await expect(page.getByText("Email sent", { exact: true })).toBeVisible();
+  expect(
+    (
+      await admin
+        .from("feature_requests")
+        .select("delivery_attempts")
+        .eq("id", saved.id)
+        .single()
+    ).data!.delivery_attempts,
+  ).toBe(2);
+});
+test("a verified employee awaiting approval can request a feature without gaining workspace access", async ({
+  page,
+}) => {
+  const email = `e2e-feature-pending-${suffix}@caedm.ca`;
+  const result = await checked(
+    await admin.auth.admin.createUser({
+      email,
+      password: secret,
+      email_confirm: true,
+      user_metadata: { full_name: "Pending Feature Requester" },
+    }),
+  );
+  const requesterId = result.user!.id;
+  await page.goto("/login");
+  await page.getByLabel("Work email").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(secret);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/pending-approval/);
+  await page.getByRole("button", { name: "Open help", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("link", { name: "Request a Feature", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Request a Feature", exact: true }),
+  ).toBeVisible();
+  const title = `Pending employee workflow suggestion ${suffix}`;
+  await fillFeatureRequest(page, title);
+  await page
+    .getByRole("button", { name: "Submit feature request", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "saved and queued for email delivery to Ruban Peppin",
+  );
+  await runFeatureEmailJob(page);
+  await featureEmail(title, email);
+  expect(
+    (
+      await admin
+        .from("profiles")
+        .select("status")
+        .eq("id", requesterId)
+        .single()
+    ).data!.status,
+  ).toBe("pending_approval");
+  const client = createClient(
+    config.API_URL,
+    config.PUBLISHABLE_KEY || config.ANON_KEY,
+    { auth: { persistSession: false } },
+  );
+  await client.auth.signInWithPassword({ email, password: secret });
+  expect(
+    (await client.from("software_subscriptions").select("id")).data,
+  ).toEqual([]);
+  expect(
+    (
+      await client
+        .from("feature_requests")
+        .select("id")
+        .eq("requester_id", ids.staff)
+    ).data,
+  ).toEqual([]);
+  expect(
+    (
+      await client
+        .from("feature_requests")
+        .select("id")
+        .eq("requester_id", requesterId)
+    ).data,
+  ).toHaveLength(1);
+  await page.goto("/dashboard");
+  await expect(page).toHaveURL(/pending-approval/);
 });

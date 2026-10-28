@@ -7,6 +7,7 @@ export type Message = {
   subject: string;
   text: string;
   html?: string;
+  replyTo?: string;
 };
 export interface EmailProvider {
   name: string;
@@ -30,6 +31,7 @@ export function emailProvider(): EmailProvider {
       subject: message.subject,
       text: message.text,
       html: message.html,
+      replyTo: message.replyTo,
       messageId: `<${message.id}@${from.address.split("@")[1]}>`,
     });
   if (provider === "local") {
@@ -42,7 +44,7 @@ export function emailProvider(): EmailProvider {
         const target = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
         if (!["localhost", "127.0.0.1"].includes(target.hostname))
           throw new Error(
-            "Local invitation delivery requires the local Supabase stack.",
+            "Local email delivery requires the local Supabase stack.",
           );
         const transport = nodemailer.createTransport({
           host: "127.0.0.1",

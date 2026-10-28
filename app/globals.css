@@ -2043,6 +2043,287 @@ body:has(.help-dialog[open]) {
 .help-footer strong {
   color: var(--caedm-burgundy);
 }
+.help-developer {
+  flex: 1;
+  min-width: 0;
+}
+.help-developer .eyebrow {
+  font-size: 9px;
+  margin-bottom: 5px;
+}
+.help-developer > a:not(.help-feature-link) {
+  color: var(--caedm-blue);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.help-developer > p {
+  margin: 4px 0;
+}
+.help-developer > small {
+  display: block;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #646773;
+  margin-top: 6px;
+}
+.help-feature-link {
+  display: inline-flex;
+  color: var(--caedm-blue);
+  border: 1px solid #b8ccdb;
+  border-radius: 6px;
+  padding: 7px 11px;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #ffffff;
+}
+.help-feature-link:hover {
+  background: #edf4f9;
+  border-color: var(--caedm-blue);
+}
+.feature-page {
+  min-height: 100vh;
+  border-top: 4px solid var(--caedm-gold);
+}
+.feature-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 25px max(25px, calc((100% - 1160px) / 2));
+  border-bottom: 1px solid #e7dee2;
+  background: #ffffff;
+  gap: 20px;
+}
+.feature-page-header .caedm-brand {
+  max-width: 220px;
+}
+.feature-page-header .caedm-logo-surface {
+  padding: 0;
+}
+.feature-page-body {
+  max-width: 1210px;
+  padding: 28px 25px 60px;
+  margin: auto;
+}
+.feature-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--caedm-blue);
+  font-size: 12px;
+  margin-bottom: 28px;
+}
+.feature-intro {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 28px;
+}
+.feature-intro h1 {
+  margin-bottom: 10px;
+}
+.feature-intro p {
+  font-size: 13px;
+  color: #626b78;
+  line-height: 1.7;
+}
+.feature-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  align-items: start;
+}
+.feature-form-panel {
+  padding: 28px;
+}
+.feature-form {
+  display: grid;
+  gap: 22px;
+}
+.feature-form fieldset {
+  min-width: 0;
+}
+.feature-form textarea {
+  font-size: 13px;
+  line-height: 1.65;
+}
+.feature-identity {
+  display: grid;
+  gap: 5px;
+  background: #f8f2f5;
+  border: 1px solid #e6d6de;
+  border-radius: 8px;
+  padding: 16px 18px;
+  overflow-wrap: anywhere;
+}
+.feature-identity strong {
+  font-size: 13px;
+  color: var(--caedm-burgundy);
+}
+.feature-identity span {
+  font-size: 12px;
+  color: #344861;
+}
+.feature-identity small {
+  color: #626b78;
+  font-size: 11px;
+}
+.feature-submit {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+.feature-submit > span {
+  font-size: 11px;
+  color: #626b78;
+  overflow-wrap: anywhere;
+}
+.feature-contact {
+  padding: 25px;
+  border-top: 3px solid var(--caedm-gold);
+}
+.feature-contact h2 {
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+.feature-contact > p {
+  color: #626b78;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.feature-contact a,
+.feature-receipt a {
+  display: inline-block;
+  color: var(--caedm-blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+  margin: 8px 0 20px;
+  font-size: 12px;
+}
+.feature-contact h3 {
+  margin: 8px 0 14px;
+}
+.feature-contact ol {
+  list-style: decimal;
+  padding-left: 18px;
+  display: grid;
+  gap: 13px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #535c69;
+  margin-bottom: 22px;
+}
+.feature-contact li::marker {
+  color: var(--caedm-burgundy);
+  font-weight: 600;
+}
+.feature-receipt {
+  display: grid;
+  gap: 18px;
+}
+.feature-receipt > svg {
+  color: var(--caedm-blue);
+}
+.feature-receipt h2 {
+  font-size: 22px;
+}
+.feature-receipt dl {
+  display: grid;
+  gap: 14px;
+}
+.feature-receipt dt {
+  font-size: 11px;
+  color: #626b78;
+  margin-bottom: 4px;
+}
+.feature-receipt dd {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.feature-reference {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+.feature-history {
+  margin-top: 28px;
+}
+.feature-history-list article {
+  padding: 22px 25px;
+  border-top: 1px solid #eee5e9;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 1fr);
+  gap: 25px;
+}
+.feature-history-list h3 {
+  margin-bottom: 6px;
+}
+.feature-history-list p,
+.feature-history-list time {
+  font-size: 11px;
+  color: #626b78;
+  line-height: 1.7;
+}
+.feature-history-list time {
+  display: block;
+  margin-top: 5px;
+}
+.feature-history-empty {
+  padding: 0 25px 25px;
+  color: #626b78;
+  font-size: 13px;
+}
+.feature-delivery > p {
+  margin-top: 9px;
+}
+.feature-retry {
+  display: grid;
+  justify-items: start;
+  gap: 9px;
+  margin-top: 12px;
+}
+@media (max-width: 800px) {
+  .feature-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .feature-contact {
+    padding: 22px;
+  }
+}
+@media (max-width: 650px) {
+  .feature-page-header {
+    padding: 20px;
+  }
+  .feature-page-header .caedm-brand {
+    max-width: 190px;
+  }
+  .feature-page-body {
+    padding: 24px 18px 45px;
+  }
+  .feature-form-panel {
+    padding: 22px 18px;
+  }
+  .feature-intro {
+    gap: 12px;
+  }
+  .feature-intro h1 {
+    font-size: 25px;
+  }
+  .feature-history-list article {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 20px 18px;
+  }
+  .feature-submit > button {
+    width: 100%;
+    height: auto;
+    white-space: normal;
+  }
+}
 .help-footer button {
   padding: 9px 18px;
   border-radius: 6px;

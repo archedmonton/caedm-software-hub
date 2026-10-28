@@ -4,6 +4,8 @@ import { usePathname } from "next/navigation";
 import { CircleHelp, Search, X, ChevronDown, LifeBuoy } from "lucide-react";
 import { helpContext, visibleHelpArticles } from "@/lib/help-content";
 import type { Profile } from "@/lib/domain";
+import Link from "next/link";
+import { developer } from "@/lib/developer";
 
 export function HelpCenter({ role }: { role?: Profile["role"] }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -199,11 +201,30 @@ export function HelpCenter({ role }: { role?: Profile["role"] }) {
           )}
         </div>
         <div className="help-footer">
-          <p>
-            <strong>Still need a hand?</strong> Contact your CAEDM workspace
-            administrator with the page and error message. Keep passwords and
-            invitation links private.
-          </p>
+          <div className="help-developer">
+            <span className="eyebrow">Developer information</span>
+            <p>
+              <strong>{developer.name}</strong> / {developer.title}
+            </p>
+            <a href={`mailto:${developer.email}`}>{developer.email}</a>
+            <p>
+              Need a hand? Contact Ruban with the page and error message. Keep
+              passwords and invitation links private.
+            </p>
+            <Link
+              href="/request-feature"
+              onClick={close}
+              className="help-feature-link"
+            >
+              Request a Feature
+            </Link>
+            {!role && (
+              <small>
+                Feature requests require a verified work account. Accounts
+                awaiting approval can also submit.
+              </small>
+            )}
+          </div>
           <button type="button" onClick={close}>
             Done
           </button>

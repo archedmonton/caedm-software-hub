@@ -406,7 +406,7 @@ test("additive upgrade preserves existing accounts, subscriptions, and departmen
     const migrations = (await readdir("supabase/migrations"))
       .filter((f) => f.endsWith(".sql"))
       .sort();
-    for (const file of migrations.filter((f) => !f.startsWith("202610270001")))
+    for (const file of migrations.filter((f) => f < "202610270001"))
       await baseline.exec(
         await readFile("supabase/migrations/" + file, "utf8"),
       );
