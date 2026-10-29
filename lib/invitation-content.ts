@@ -65,18 +65,33 @@ export function invitationMessage(
   }).format(expiresAt)} (Edmonton time)`;
   const text = `CAEDM SOFTWARE HUB\nCatholic Archdiocese of Edmonton\n\nYou are invited to Software Hub\n\nHello ${invite.full_name},\n\nYour CAEDM administrator has invited you to join Software Hub, our shared workspace for software, subscriptions and renewals.\n\nYOUR ACCESS\nDepartment: ${invite.department}\nAccess role: ${role}\nWork email: ${invite.email}\n\nAccept your invitation:\n${url}\n\nCreate your own password to finish setting up your account, then sign in to your workspace. No temporary password is sent.\n\nINVITATION EXPIRES\n${expires}\nThis link is personal to you. Please do not forward this email.\n\nIf the link has expired, ask your CAEDM administrator to resend your invitation.\n\nNeed a hand? Contact ${developer.name}: ${developer.email}\nIf you were not expecting this invitation, contact your CAEDM administrator before continuing.\n\nCAEDM Software Hub\nCatholic Archdiocese of Edmonton\nGood stewardship. Clearer decisions.`;
   const html = `<!doctype html>
-<html lang="en">
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>${subject}</title>
   <style>
+    table { border-collapse:collapse; mso-table-lspace:0pt; mso-table-rspace:0pt; }
+    a.email-button, a.email-button:link, a.email-button:visited, a.email-button:hover, a.email-button:focus, a.email-button:active, a.email-button span { color:#ffffff !important; -webkit-text-fill-color:#ffffff !important; text-decoration:none !important; }
+    a.email-button:hover { background:#68002c !important; border-color:#68002c !important; }
+    @media (hover:hover) {
+      a.email-link:hover { color:#860038 !important; }
+    }
+    a.email-button:focus { outline:3px solid #005493; outline-offset:3px; }
     @media only screen and (max-width:620px) {
-      .email-outer { padding:16px 8px !important; }
-      .email-padding { padding-left:24px !important; padding-right:24px !important; }
-      .email-heading { font-size:26px !important; }
-      .email-button { display:block !important; text-align:center !important; }
+      .email-outer { padding:20px 12px !important; }
+      .email-padding { padding-left:22px !important; padding-right:22px !important; }
+      .email-heading { font-size:26px !important; line-height:34px !important; }
+      .email-access, .email-access tbody, .email-access tr, .email-access td { display:block !important; width:100% !important; box-sizing:border-box !important; }
+      .email-access colgroup { display:none !important; }
+      .email-access-title { padding:16px 16px 4px !important; }
+      .email-label { padding:12px 16px 0 !important; }
+      .email-value { padding:3px 16px 12px !important; }
+      .email-label + .email-value { border-bottom:1px solid #eadfe4; }
+      .email-access tr:last-child .email-value { border-bottom:0; }
+      .email-action { width:100% !important; }
+      .email-button { display:block !important; padding:10px 16px !important; text-align:center !important; }
     }
   </style>
 </head>
@@ -85,27 +100,31 @@ export function invitationMessage(
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8f5f6">
     <tr><td class="email-outer" align="center" style="padding:32px 16px">
       <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border:1px solid #e8dfe3;border-top:5px solid #E5C047;border-radius:8px;overflow:hidden">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;table-layout:fixed;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #e8dfe3;border-top:4px solid #E5C047;border-radius:10px;overflow:hidden">
         <tr><td class="email-padding" style="padding:28px 32px 24px;background:#ffffff">
-          <img src="cid:${emailBrand.logoCid}" alt="${emailBrand.logoAlt}" width="248" height="115" style="display:block;width:248px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none">
-          <p style="margin:16px 0 0;color:#860038;font-size:11px;font-weight:bold;line-height:16px;letter-spacing:3px">SOFTWARE HUB</p>
+          <img src="cid:${emailBrand.logoCid}" alt="${emailBrand.logoAlt}" width="217" height="101" style="display:block;width:217px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none">
+          <p style="margin:12px 0 0;color:#860038;font-size:11px;font-weight:bold;line-height:16px;letter-spacing:2px">SOFTWARE HUB</p>
         </td></tr>
         <tr><td class="email-padding" bgcolor="#860038" style="padding:28px 32px;background:#860038;color:#ffffff">
           <p style="margin:0 0 10px;color:#E5C047;font-size:11px;line-height:16px;font-weight:bold;letter-spacing:2px">YOUR CAEDM WORKSPACE</p>
-          <h1 class="email-heading" style="margin:0;color:#ffffff;font-size:30px;line-height:1.25;font-weight:bold">You are invited to<br>Software Hub</h1>
+          <h1 class="email-heading" style="margin:0;color:#ffffff;font-size:30px;line-height:38px;font-weight:bold">You are invited to<br>Software Hub</h1>
           <p style="margin:12px 0 0;color:#ffffff;font-size:14px;line-height:22px">Software, subscriptions and renewals. Together in one place.</p>
         </td></tr>
         <tr><td class="email-padding" style="padding:28px 32px 32px">
           <p style="margin:0 0 16px;font-size:16px;line-height:25px">Hello ${escapeHtml(invite.full_name)},</p>
           <p style="margin:0 0 24px;font-size:15px;line-height:25px">Your CAEDM administrator has invited you to join Software Hub, our shared workspace for managing software, subscriptions and renewals.</p>
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#faf7f8;border:1px solid #eadfe4;border-radius:6px">
-            <tr><td colspan="2" style="padding:18px 20px 8px;font-size:11px;font-weight:bold;line-height:16px;letter-spacing:1.5px;color:#860038">YOUR ACCESS</td></tr>
-            <tr><td width="110" valign="top" style="padding:6px 12px 6px 20px;font-size:13px;line-height:21px;color:#626b78">Department</td><td style="padding:6px 20px 6px 0;font-size:14px;line-height:21px;font-weight:bold;overflow-wrap:anywhere;word-break:break-word">${escapeHtml(invite.department)}</td></tr>
-            <tr><td width="110" valign="top" style="padding:6px 12px 6px 20px;font-size:13px;line-height:21px;color:#626b78">Access role</td><td style="padding:6px 20px 6px 0;font-size:14px;line-height:21px">${escapeHtml(role)}</td></tr>
-            <tr><td width="110" valign="top" style="padding:6px 12px 18px 20px;font-size:13px;line-height:21px;color:#626b78">Work email</td><td style="padding:6px 20px 18px 0;font-size:13px;line-height:21px;overflow-wrap:anywhere;word-break:break-all">${escapeHtml(invite.email)}</td></tr>
+          <table class="email-access" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;background:#faf7f8;border:1px solid #eadfe4;border-radius:6px">
+            <colgroup><col width="32%" style="width:32%"><col width="68%" style="width:68%"></colgroup>
+            <tr><td class="email-access-title" colspan="2" style="padding:16px 20px 10px;font-size:11px;font-weight:bold;line-height:16px;letter-spacing:1.5px;color:#860038">YOUR ACCESS</td></tr>
+            <tr><td class="email-label" width="32%" valign="top" style="width:32%;padding:8px 12px 8px 20px;font-size:13px;line-height:21px;color:#626b78">Department</td><td class="email-value" valign="top" style="padding:8px 20px 8px 0;font-size:14px;line-height:21px;font-weight:bold;overflow-wrap:anywhere;word-break:break-word">${escapeHtml(invite.department)}</td></tr>
+            <tr><td class="email-label" valign="top" style="padding:8px 12px 8px 20px;font-size:13px;line-height:21px;color:#626b78">Access role</td><td class="email-value" valign="top" style="padding:8px 20px 8px 0;font-size:14px;line-height:21px">${escapeHtml(role)}</td></tr>
+            <tr><td class="email-label" valign="top" style="padding:8px 12px 18px 20px;font-size:13px;line-height:21px;color:#626b78">Work email</td><td class="email-value" valign="top" style="padding:8px 20px 18px 0;font-size:14px;line-height:21px;overflow-wrap:anywhere;word-break:break-word">${escapeHtml(invite.email)}</td></tr>
           </table>
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0 18px"><tr><td bgcolor="#860038" style="background:#860038;border-radius:5px;mso-padding-alt:15px 26px">
-            <a class="email-button" href="${escapeHtml(url)}" style="display:inline-block;padding:15px 26px;border:1px solid #860038;border-radius:5px;color:#ffffff;background:#860038;font-size:15px;line-height:20px;font-weight:bold;text-decoration:none;mso-padding-alt:0">Accept invitation</a>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:20px 0 12px">
+          <!--[if mso]><v:roundrect href="${escapeHtml(url)}" style="height:44px;v-text-anchor:middle;width:208px" arcsize="12%" stroke="f" fillcolor="#860038"><w:anchorlock/><center style="color:#ffffff !important;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold"><span style="color:#ffffff !important">Accept invitation</span></center></v:roundrect><![endif]-->
+          <!--[if !mso]><!--><table class="email-action" role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#860038" align="center" style="background:#860038;border-radius:6px">
+            <a class="email-button" href="${escapeHtml(url)}" style="display:inline-block;padding:10px 22px;border:1px solid #860038;border-radius:6px;color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;background:#860038;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;font-weight:bold;text-decoration:none !important;text-align:center"><span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;text-decoration:none !important">Accept invitation</span></a>
+          </td></tr></table><!--<![endif]-->
           </td></tr></table>
           <p style="margin:0 0 24px;font-size:14px;line-height:23px;color:#626b78">Create your own password to finish setting up your account, then sign in to your workspace. No temporary password is sent.</p>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-left:3px solid #E5C047;background:#fffcf2"><tr><td style="padding:14px 16px">
@@ -114,12 +133,12 @@ export function invitationMessage(
             <p style="margin:0;font-size:13px;line-height:21px;color:#626b78">This link is personal to you. Please do not forward this email.</p>
           </td></tr></table>
           <p style="margin:24px 0 8px;font-size:12px;line-height:20px;color:#626b78">If the button does not work, copy this entire link into your browser:</p>
-          <p style="margin:0;font-size:12px;line-height:20px;word-break:break-all;overflow-wrap:anywhere"><a href="${escapeHtml(url)}" style="color:#005493;text-decoration:underline;word-break:break-all">${escapeHtml(url)}</a></p>
+          <p style="margin:0;font-size:12px;line-height:20px;word-break:break-all;overflow-wrap:anywhere"><a class="email-link" href="${escapeHtml(url)}" style="color:#005493;text-decoration:underline;word-break:break-all">${escapeHtml(url)}</a></p>
           <p style="margin:14px 0 0;font-size:12px;line-height:20px;color:#626b78">If the link has expired, ask your CAEDM administrator to resend your invitation.</p>
         </td></tr>
         <tr><td class="email-padding" style="padding:22px 32px;background:#faf7f8;border-top:1px solid #e8dfe3">
           <p style="margin:0 0 8px;font-size:14px;line-height:22px;font-weight:bold;color:#860038">Need a hand?</p>
-          <p style="margin:0;font-size:13px;line-height:22px;color:#626b78">Contact ${escapeHtml(developer.name)} at<br><a href="mailto:${developer.email}" style="color:#005493;text-decoration:underline">${developer.email}</a></p>
+          <p style="margin:0;font-size:13px;line-height:22px;color:#626b78">Contact ${escapeHtml(developer.name)} at<br><a class="email-link" href="mailto:${developer.email}" style="color:#005493;text-decoration:underline">${developer.email}</a></p>
           <p style="margin:14px 0 0;font-size:12px;line-height:20px;color:#626b78">If you were not expecting this invitation, contact your CAEDM administrator before continuing.</p>
         </td></tr>
       </table>

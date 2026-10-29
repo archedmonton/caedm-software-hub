@@ -39,7 +39,7 @@ function InvitationPanel({ token }: { token: string | null }) {
   );
   return (
     <main className="standalone">
-      <section className="panel w-full max-w-lg p-8">
+      <section className="panel invitation-accept-card">
         <div className="standalone-brand">
           <Brand />
           <HelpCenter />
@@ -47,7 +47,7 @@ function InvitationPanel({ token }: { token: string | null }) {
         <ShieldCheck className="text-primary mb-5" size={32} />
         <span className="eyebrow">YOUR INVITATION</span>
         <h1>Set up your account</h1>
-        <p className="text-muted-foreground my-5">
+        <p className="invitation-accept-description">
           Create your own password to accept your invitation. Your administrator
           has already selected your role and department.
         </p>
@@ -96,7 +96,7 @@ function InvitationPanel({ token }: { token: string | null }) {
             )}
             <Button
               disabled={pending}
-              className="w-full h-auto min-h-9 whitespace-normal text-center"
+              className="w-full h-auto min-h-11 whitespace-normal text-center"
             >
               {pending
                 ? "Setting up your account..."

@@ -534,6 +534,27 @@ async function sendEmployeeInvitation(page: Page, email: string) {
       exact: true,
     }),
   });
+  const originalViewport = page.viewportSize();
+  await section.screenshot({
+    path: ".artifacts/invitation-form-desktop.png",
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  const submit = section.getByRole("button", {
+    name: "Send invitation",
+    exact: true,
+  });
+  expect((await submit.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await section.screenshot({
+    path: ".artifacts/invitation-form-mobile.png",
+    animations: "disabled",
+  });
+  if (originalViewport) await page.setViewportSize(originalViewport);
   await section
     .getByLabel("Employee name", { exact: true })
     .fill("Invited Pilot Employee");
@@ -605,17 +626,84 @@ test("administrator invitation sends branded mail and requires password setup be
       fullPage: true,
       animations: "disabled",
     });
+    const emailButton = preview.getByRole("link", {
+      name: "Accept invitation",
+      exact: true,
+    });
+    const restingEmailButton = await emailButton.boundingBox();
+    expect(restingEmailButton!.height).toBe(44);
+    // Reproduce a mail viewer applying generic blue link hover styling.
+    await preview.addStyleTag({
+      content: "a:hover { color:blue !important; }",
+    });
+    await emailButton.hover();
+    await expect(emailButton).toHaveCSS("background-color", "rgb(104, 0, 44)");
+    await expect(emailButton).toHaveCSS("color", "rgb(255, 255, 255)");
+    await expect(emailButton.locator("span")).toHaveCSS(
+      "color",
+      "rgb(255, 255, 255)",
+    );
+    expect(await emailButton.boundingBox()).toEqual(restingEmailButton);
+    await emailButton.screenshot({
+      path: ".artifacts/invitation-email-button-hover.png",
+      animations: "disabled",
+    });
+    await emailButton.focus();
+    await expect(emailButton.locator("span")).toHaveCSS(
+      "color",
+      "rgb(255, 255, 255)",
+    );
+    await emailButton.blur();
+    await preview.mouse.move(0, 0);
     await preview.setViewportSize({ width: 390, height: 844 });
     expect(
       await preview.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
+    const mobileButton = await emailButton.boundingBox();
+    const mobileAction = await preview.locator(".email-action").boundingBox();
+    expect(mobileButton!.height).toBe(44);
+    expect(Math.abs(mobileButton!.width - mobileAction!.width)).toBeLessThan(2);
+    const departmentLabel = await preview
+      .locator(".email-label")
+      .first()
+      .boundingBox();
+    const departmentValue = await preview
+      .locator(".email-value")
+      .first()
+      .boundingBox();
+    const accessCard = await preview.locator(".email-access").boundingBox();
+    expect(departmentValue!.width).toBeGreaterThanOrEqual(
+      accessCard!.width - 3,
+    );
+    expect(departmentValue!.y).toBeGreaterThanOrEqual(
+      departmentLabel!.y + departmentLabel!.height,
+    );
     await preview.screenshot({
       path: ".artifacts/invitation-email-mobile.png",
       fullPage: true,
       animations: "disabled",
     });
+    await preview.setViewportSize({ width: 320, height: 740 });
+    await preview
+      .locator(".email-value")
+      .first()
+      .evaluate((el) => {
+        el.textContent =
+          "Mission Advancement, Communications and Community Engagement";
+      });
+    await preview
+      .locator(".email-value")
+      .last()
+      .evaluate((el) => {
+        el.textContent = "a.very.long.employee.address.for.preview@caedm.ca";
+      });
+    expect(
+      await preview.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
     await preview.locator("img").evaluate((el) => el.remove());
     await expect(
       preview.getByRole("heading", { name: "You are invited to Software Hub" }),
@@ -651,6 +739,22 @@ test("administrator invitation sends branded mail and requires password setup be
       recipient.getByRole("heading", { name: "Set up your account" }),
     ).toBeVisible();
     await expect(recipient).toHaveURL(/\/accept-invitation$/);
+    const setupCard = recipient.locator(".invitation-accept-card");
+    await setupCard.screenshot({
+      path: ".artifacts/invitation-setup-desktop.png",
+      animations: "disabled",
+    });
+    await recipient.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await recipient.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await setupCard.screenshot({
+      path: ".artifacts/invitation-setup-mobile.png",
+      animations: "disabled",
+    });
+    await recipient.setViewportSize({ width: 1280, height: 720 });
     const chosenPassword = secret + "Invitation9";
     await recipient
       .getByLabel("New password", { exact: true })
@@ -856,6 +960,17 @@ test("CAEDM logo and searchable public help are accessible on desktop and mobile
   await expect(search).toHaveValue("");
   await dialog.getByRole("button", { name: "Done", exact: true }).click();
   await expect(dialog).not.toBeVisible();
+  const signIn = page.getByRole("button", { name: "Sign in", exact: true });
+  const restingBounds = await signIn.boundingBox();
+  await signIn.hover();
+  await expect(signIn).toHaveCSS("background-color", "rgb(104, 0, 44)");
+  await expect(signIn).toHaveCSS("color", "rgb(255, 255, 255)");
+  expect(await signIn.boundingBox()).toEqual(restingBounds);
+  await signIn.focus();
+  await expect(signIn).toBeFocused();
+  await expect(signIn).not.toHaveCSS("box-shadow", "none");
+  await page.mouse.move(0, 0);
+  await signIn.blur();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,

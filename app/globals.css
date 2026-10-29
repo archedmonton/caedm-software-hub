@@ -112,7 +112,7 @@
     border-radius: 6px;
     padding: 9px 11px;
     font: inherit;
-    min-height: 38px;
+    min-height: 40px;
   }
   input::placeholder,
   textarea::placeholder {
@@ -333,15 +333,19 @@
   position: relative;
   color: #6c7b90;
   display: flex;
-  padding: 5px;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 7px;
 }
 .notification-button i {
   position: absolute;
   width: 5px;
   height: 5px;
   background: #e29b56;
-  right: 5px;
-  top: 3px;
+  right: 9px;
+  top: 7px;
   border-radius: 100%;
 }
 .account-menu {
@@ -353,6 +357,9 @@
   align-items: center;
   list-style: none;
   font-size: 12px;
+  min-height: 40px;
+  padding: 5px 7px;
+  border-radius: 7px;
 }
 .account-menu summary::-webkit-details-marker {
   display: none;
@@ -932,6 +939,61 @@ tbody tr:hover {
 .form-grid .wide {
   grid-column: 1/-1;
 }
+.form-grid > label {
+  min-width: 0;
+}
+.invitation-panel {
+  padding: 28px;
+}
+.invitation-panel > p {
+  max-width: 70ch;
+  line-height: 1.7;
+}
+.invitation-form {
+  display: grid;
+  gap: 20px;
+}
+.invitation-form label {
+  font-size: 13px;
+  gap: 8px;
+}
+.invitation-form input,
+.invitation-form select {
+  font-size: 14px;
+  min-height: 44px;
+}
+.invitation-form .field-hint {
+  max-width: 90ch;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.invitation-form .notice {
+  margin: 0;
+}
+.invitation-form-actions {
+  display: flex;
+  padding-top: 20px;
+  border-top: 1px solid #eee7eb;
+}
+.invitation-accept-card {
+  width: 100%;
+  max-width: 560px;
+  padding: 32px;
+  border-top: 4px solid var(--caedm-gold);
+}
+.invitation-accept-description {
+  color: #626b78;
+  line-height: 1.75;
+  margin: 16px 0 28px;
+}
+.invitation-accept-card label {
+  font-size: 13px;
+  gap: 8px;
+}
+.invitation-accept-card input:not([type="hidden"]) {
+  min-height: 44px;
+  font-size: 16px;
+}
 .field-hint {
   font-size: 11px;
   font-weight: 400;
@@ -1071,25 +1133,29 @@ tbody tr:hover {
   justify-content: center;
   gap: 7px;
   border-radius: 6px;
-  font-size: 11px;
-  font-weight: 550;
-  min-height: 36px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  min-height: 40px;
   padding: 8px 14px;
 }
 .primary-button {
   background: var(--caedm-burgundy);
   color: #fff;
 }
-.primary-button:hover {
+.primary-button:hover:not(:disabled):not([aria-disabled="true"]) {
   background: #68002c;
+  color: #fff;
 }
 .secondary-button {
   background: #fff;
   border: 1px solid #dfe6f0;
-  color: #6d829f;
+  color: #455268;
 }
-.secondary-button:hover {
-  background: #f3f6fc;
+.secondary-button:hover:not(:disabled):not([aria-disabled="true"]) {
+  border-color: #b8ccdb;
+  background: #edf4f9;
+  color: var(--caedm-blue);
 }
 .finance-groups,
 .admin-grid {
@@ -1660,6 +1726,55 @@ dialog.modal-card::backdrop {
 }
 .nav-item.selected svg {
   color: var(--caedm-gold);
+}
+.nav-item.selected:hover {
+  background: #ffffff2b;
+}
+.sidebar-user button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 6px;
+}
+.topbar > div:first-child {
+  min-width: 0;
+}
+.topbar strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (hover: hover) and (pointer: fine) {
+  input:not(:disabled):not(:focus):hover,
+  select:not(:disabled):not(:focus):hover,
+  textarea:not(:disabled):not(:focus):hover {
+    border-color: #9eacbd;
+  }
+  .notification-button:hover,
+  .account-menu summary:hover,
+  .account-menu[open] summary {
+    background: #edf4f9;
+    color: var(--caedm-blue);
+  }
+  .sidebar-user button:hover {
+    background: #ffffff21;
+    color: #fff;
+  }
+  .auth-links a:hover,
+  .back-link:hover,
+  .feature-back:hover,
+  .help-developer > a:not(.help-feature-link):hover,
+  .feature-contact a:hover {
+    color: var(--caedm-burgundy);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .help-article summary:hover {
+    color: var(--caedm-burgundy);
+    background: #faf7f8;
+  }
 }
 .nav-count {
   background: var(--caedm-gold);
@@ -2383,7 +2498,8 @@ body:has(.help-dialog[open]) {
     gap: 9px;
   }
   .topbar .help-trigger {
-    width: 36px;
+    width: 40px;
+    min-height: 40px;
     padding: 7px;
   }
   .topbar .help-trigger span {
@@ -2391,6 +2507,14 @@ body:has(.help-dialog[open]) {
   }
   .standalone {
     padding: 20px;
+  }
+  .invitation-panel,
+  .invitation-accept-card {
+    padding: 24px 20px;
+  }
+  .invitation-form-actions > button {
+    width: 100%;
+    min-height: 44px;
   }
   .standalone-brand {
     gap: 12px;

@@ -42,7 +42,7 @@ export default async function TeamPage() {
         {protection.error &&
           " Access management is temporarily unavailable. Contact the developer."}
       </div>
-      <section className="panel p-6 mb-6">
+      <section className="panel invitation-panel mb-6">
         <h2 className="mb-3">Invite an employee</h2>
         <p className="text-muted-foreground mb-5">
           Select their access and send a professional invitation. No account

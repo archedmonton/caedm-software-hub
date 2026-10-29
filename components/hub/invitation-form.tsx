@@ -16,22 +16,29 @@ export function InviteEmployeeForm({ teams }: { teams: Team[] }) {
     {},
   );
   return (
-    <form action={action} className="space-y-4">
-      <label>
-        Employee name
-        <input name="full_name" required maxLength={150} autoComplete="name" />
-      </label>
-      <label>
-        Employee work email
-        <input
-          name="email"
-          type="email"
-          required
-          maxLength={254}
-          placeholder="employee@caedm.ca"
-          autoComplete="email"
-        />
-      </label>
+    <form action={action} className="invitation-form">
+      <div className="form-grid">
+        <label>
+          Employee name
+          <input
+            name="full_name"
+            required
+            maxLength={150}
+            autoComplete="name"
+          />
+        </label>
+        <label>
+          Employee work email
+          <input
+            name="email"
+            type="email"
+            required
+            maxLength={254}
+            placeholder="employee@caedm.ca"
+            autoComplete="email"
+          />
+        </label>
+      </div>
       <div className="form-grid">
         <label>
           Invitation department
@@ -82,10 +89,12 @@ export function InviteEmployeeForm({ teams }: { teams: Team[] }) {
           {state.success}
         </p>
       )}
-      <Button disabled={pending || !teams.length}>
-        <MailPlus size={16} />
-        {pending ? "Sending invitation..." : "Send invitation"}
-      </Button>
+      <div className="invitation-form-actions">
+        <Button disabled={pending || !teams.length}>
+          <MailPlus size={16} />
+          {pending ? "Sending invitation..." : "Send invitation"}
+        </Button>
+      </div>
     </form>
   );
 }
