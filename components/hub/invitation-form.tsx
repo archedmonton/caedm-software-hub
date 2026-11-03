@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MailPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,11 +10,24 @@ import {
 } from "@/app/invitations/actions";
 import type { Team } from "@/lib/domain";
 
-export function InviteEmployeeForm({ teams }: { teams: Team[] }) {
+export function InviteEmployeeForm({
+  teams,
+  defaultTeamId = "",
+  staffOnly = false,
+  onPendingChange,
+}: {
+  teams: Team[];
+  defaultTeamId?: string;
+  staffOnly?: boolean;
+  onPendingChange?: (pending: boolean) => void;
+}) {
   const [state, action, pending] = useActionState<InvitationState, FormData>(
     inviteEmployee,
     {},
   );
+  useEffect(() => {
+    onPendingChange?.(pending);
+  }, [pending, onPendingChange]);
   return (
     <form action={action} className="invitation-form">
       <div className="form-grid">
@@ -42,7 +55,7 @@ export function InviteEmployeeForm({ teams }: { teams: Team[] }) {
       <div className="form-grid">
         <label>
           Invitation department
-          <select name="team_id" required defaultValue="">
+          <select name="team_id" required defaultValue={defaultTeamId}>
             <option value="" disabled>
               Select a department
             </option>
@@ -53,15 +66,18 @@ export function InviteEmployeeForm({ teams }: { teams: Team[] }) {
             ))}
           </select>
         </label>
-        <label>
-          Invitation role
-          <select name="role" defaultValue="staff">
-            <option value="staff">Staff</option>
-            <option value="finance">Finance</option>
-            <option value="admin">Administrator</option>
-          </select>
-        </label>
+        {!staffOnly && (
+          <label>
+            Invitation role
+            <select name="role" defaultValue="staff">
+              <option value="staff">Staff</option>
+              <option value="finance">Finance</option>
+              <option value="admin">Administrator</option>
+            </select>
+          </label>
+        )}
       </div>
+      {staffOnly && <input type="hidden" name="role" value="staff" />}
       <label>
         Department software permissions
         <select name="can_manage" defaultValue="false">
@@ -70,9 +86,15 @@ export function InviteEmployeeForm({ teams }: { teams: Team[] }) {
         </select>
       </label>
       <p className="field-hint">
-        Staff access is limited to assigned departments. Finance and
-        Administrator roles have organization-wide access. The employee receives
-        a secure email and creates their own password.
+        {staffOnly ? (
+          "This employee will be invited as Staff with the selected department permission. They receive a secure email and create their own password."
+        ) : (
+          <>
+            Staff access is limited to assigned departments. Finance and
+            Administrator roles have organization-wide access. The employee
+            receives a secure email and creates their own password.
+          </>
+        )}
       </p>
       {!teams.length && (
         <p className="notice">

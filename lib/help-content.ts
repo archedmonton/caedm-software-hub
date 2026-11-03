@@ -39,7 +39,7 @@ export const roleCapabilities = [
     staff: "No",
   },
   {
-    capability: "Manage vendors and payment references",
+    capability: "Manage vendors, categories and payment references",
     super_admin: "Yes",
     admin: "Yes",
     finance: "Yes",
@@ -278,6 +278,9 @@ export const helpArticles: HelpArticle[] = [
     steps: [
       "Search or filter Software Inventory before creating a record to avoid duplicates.",
       "Select Add software, complete the required fields, and choose the responsible department and owner.",
+      "Use the Add option inside Vendor, Category, Department, Responsible employee or Payment reference when the item is missing. A modal keeps your software draft in place and selects the saved reference. Finance and administrators create vendor, category and payment references; only administrators create departments or assign employees.",
+      "New shared references save immediately, even if you later cancel the software draft. Existing employee assignment grants View department access immediately; invited employees must complete their email and password setup before they can own software.",
+      "Choose the i button beside a complex field for specific guidance. It works with keyboard and touch; Escape closes the guidance or modal. Changing department clears an owner or payment reference that does not belong to the new department.",
       "Enter the billing amount, currency, cycle, start date and cancellation notice period carefully. Use a one-time purchase for a non-recurring item.",
       "Open an existing record and choose Edit to update its details. Staff need permission to manage that department's software; Finance and Administrators have wider access.",
     ],
@@ -483,10 +486,11 @@ export const helpArticles: HelpArticle[] = [
     id: "references",
     category: "Finance",
     access: "finance",
-    title: "How do I manage vendors and payment references?",
+    title: "How do I manage vendors, categories and payment references?",
     summary: "Shared references keep software and expense records consistent.",
     steps: [
-      "Open Settings to add vendors and department payment references before assigning them on software records.",
+      "On Add or Edit software, open Vendor or Category and choose its Add option. Save in the modal to select the reference without losing the software draft. Vendor creation has moved out of Settings.",
+      "Choose a department, then open Payment reference and select Add payment reference. The modal locks the reference to that department; use a recognizable nickname and optional card brand and last four digits. Payment references can also be maintained in Settings.",
       "Use a recognizable nickname and the appropriate department. Record only permitted details such as card brand and last four digits; never store a full card number, CVV or vendor password.",
       "Choose these references on the software form. Recorded expenses keep a snapshot of their references so later edits do not rewrite financial history.",
     ],

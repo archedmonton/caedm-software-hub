@@ -122,17 +122,8 @@ export default async function Settings() {
       )}
       {financeRole(profile.role) && (
         <>
-          <div className="admin-grid mt-6">
-            <section className="panel p-7">
-              <h2 className="mb-5">Add a vendor</h2>
-              <SimpleForm kind="vendor" reference label="Add vendor">
-                <label>
-                  Vendor name
-                  <input name="name" required maxLength={150} />
-                </label>
-              </SimpleForm>
-            </section>
-            <section className="panel p-7">
+          <div className="mt-6">
+            <section className="panel p-7 max-w-3xl">
               <h2 className="mb-5">Add a payment reference</h2>
               <SimpleForm
                 kind="payment"

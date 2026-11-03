@@ -4,6 +4,15 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
+
+async function openReference(page: Page, field: string, title: string) {
+  const dropdown = page.getByRole("combobox", { name: field, exact: true });
+  await dropdown.focus();
+  await dropdown.selectOption("__create__");
+  const dialog = page.getByRole("dialog", { name: title, exact: true });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
 test.describe.configure({ mode: "serial" });
 const raw = execFileSync(
   process.execPath,
@@ -1523,4 +1532,448 @@ test("Help explains all four roles with an accessible comparison on desktop and 
   });
   await page.keyboard.press("Escape");
   await expect(help).not.toBeVisible();
+});
+
+test("Add Software creates and selects references without losing the draft or bypassing employee onboarding", async ({
+  page,
+}) => {
+  await login(page, "admin");
+  await page.goto("/software/new");
+  const draftName = `Inline editor software ${suffix}`;
+  await page.getByLabel("Software name", { exact: true }).fill(draftName);
+  await page.getByLabel("Cost centre", { exact: true }).fill("EDITOR-DRAFT");
+  await page
+    .getByRole("combobox", { name: "Vendor", exact: true })
+    .selectOption("20000000-0000-4000-8000-000000000001");
+  await page
+    .getByRole("combobox", { name: "Department", exact: true })
+    .selectOption(team);
+  await page
+    .getByRole("combobox", { name: "Responsible employee", exact: true })
+    .selectOption(ids.staff);
+  await page
+    .getByRole("combobox", { name: "Payment reference", exact: true })
+    .selectOption("30000000-0000-4000-8000-000000000001");
+  let dialog = await openReference(page, "Vendor", "Add vendor");
+  await expect(dialog.getByLabel("Vendor name")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Vendor", exact: true }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("combobox", { name: "Vendor", exact: true }),
+  ).toHaveValue("20000000-0000-4000-8000-000000000001");
+  await expect(page.getByLabel("Software name", { exact: true })).toHaveValue(
+    draftName,
+  );
+  const vendorName = `Inline vendor ${suffix}`;
+  dialog = await openReference(page, "Vendor", "Add vendor");
+  await dialog.getByLabel("Vendor name").fill(vendorName);
+  await dialog
+    .getByRole("button", { name: "Save vendor", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page
+      .getByRole("combobox", { name: "Vendor", exact: true })
+      .locator("option:checked"),
+  ).toHaveText(vendorName);
+  const categoryName = `Editor %_ Category ${suffix}`;
+  dialog = await openReference(page, "Category", "Add category");
+  await dialog.getByLabel("Category name").fill(categoryName);
+  await dialog
+    .getByRole("button", { name: "Save category", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  dialog = await openReference(page, "Category", "Add category");
+  await dialog.getByLabel("Category name").fill(categoryName.toLowerCase());
+  await dialog
+    .getByRole("button", { name: "Save category", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Category", exact: true }),
+  ).toHaveValue(categoryName);
+  await expect(page.getByRole("status")).toContainText("already exists");
+  dialog = await openReference(page, "Department", "Add department");
+  await dialog
+    .getByLabel("Department name")
+    .fill(`Editor department ${suffix}`);
+  await dialog
+    .getByRole("button", { name: "Save department", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  const departmentId = await page
+    .getByRole("combobox", { name: "Department", exact: true })
+    .inputValue();
+  expect(departmentId).toMatch(/^[a-f0-9-]{36}$/);
+  await expect(
+    page.getByRole("combobox", { name: "Responsible employee", exact: true }),
+  ).toHaveValue("");
+  await expect(
+    page.getByRole("combobox", { name: "Payment reference", exact: true }),
+  ).toHaveValue("");
+  dialog = await openReference(
+    page,
+    "Responsible employee",
+    "Add responsible employee",
+  );
+  await dialog
+    .getByRole("combobox", { name: "Active employee", exact: true })
+    .selectOption(ids.staff);
+  await dialog
+    .getByRole("button", { name: "Add employee and select", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Responsible employee", exact: true }),
+  ).toHaveValue(ids.staff);
+  expect(
+    (
+      await admin
+        .from("team_members")
+        .select("can_manage")
+        .eq("team_id", departmentId)
+        .eq("profile_id", ids.staff)
+        .single()
+    ).data,
+  ).toEqual({ can_manage: false });
+  dialog = await openReference(
+    page,
+    "Payment reference",
+    "Add payment reference",
+  );
+  await dialog.getByLabel("Reference nickname").fill(`Editor card ${suffix}`);
+  await dialog.getByLabel("Card brand (optional)").fill("Visa");
+  await dialog
+    .getByLabel("Last four digits (optional)", { exact: true })
+    .fill("12");
+  await dialog
+    .getByRole("button", { name: "Save payment reference", exact: true })
+    .click();
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByLabel("Last four digits (optional)", { exact: true })
+    .fill("2468");
+  await dialog.screenshot({
+    path: ".artifacts/software-payment-modal-desktop.png",
+    animations: "disabled",
+    caret: "initial",
+  });
+  await dialog
+    .getByRole("button", { name: "Save payment reference", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page
+      .getByRole("combobox", { name: "Payment reference", exact: true })
+      .locator("option:checked"),
+  ).toContainText("2468");
+  await expect(page.getByLabel("Cost centre", { exact: true })).toHaveValue(
+    "EDITOR-DRAFT",
+  );
+  await page.getByLabel("Billing amount", { exact: true }).fill("89.45");
+  await page.screenshot({
+    path: ".artifacts/software-editor-desktop.png",
+    fullPage: true,
+    animations: "disabled",
+    caret: "initial",
+  });
+  await page
+    .locator(".form-section")
+    .first()
+    .screenshot({
+      path: ".artifacts/software-basic-information-desktop.png",
+      animations: "disabled",
+      caret: "initial",
+    });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: ".artifacts/software-editor-mobile.png",
+    fullPage: true,
+    animations: "disabled",
+    caret: "initial",
+  });
+  await page
+    .locator(".form-section")
+    .first()
+    .screenshot({
+      path: ".artifacts/software-basic-information-mobile.png",
+      animations: "disabled",
+      caret: "initial",
+    });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page
+    .getByRole("button", { name: "Save software", exact: true })
+    .click();
+  await expect(page).toHaveURL(/software\/[0-9a-f-]+$/);
+  await expect(
+    page.getByRole("heading", { name: draftName, exact: true }),
+  ).toBeVisible();
+  const stored = await admin
+    .from("software_subscriptions")
+    .select("category,cost_centre,owner_id,team_id,amount")
+    .eq("id", page.url().split("/").pop()!)
+    .single();
+  expect(stored.data).toMatchObject({
+    category: categoryName,
+    cost_centre: "EDITOR-DRAFT",
+    owner_id: ids.staff,
+    team_id: departmentId,
+    amount: 89.45,
+  });
+  await page.goto("/settings");
+  await expect(
+    page.getByRole("heading", { name: "Add a vendor", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("Finance can add categories and non-card payment references but cannot add departments or employees", async ({
+  page,
+}) => {
+  await login(page, "finance");
+  await page.goto("/software/new");
+  await page
+    .getByLabel("Software name", { exact: true })
+    .fill("Finance unsaved draft");
+  await expect(
+    page
+      .getByRole("combobox", { name: "Department", exact: true })
+      .locator('option[value="__create__"]'),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("combobox", { name: "Responsible employee", exact: true })
+      .locator('option[value="__create__"]'),
+  ).toHaveCount(0);
+  await page
+    .getByRole("combobox", { name: "Department", exact: true })
+    .selectOption(team);
+  let dialog = await openReference(page, "Category", "Add category");
+  await dialog.getByLabel("Category name").fill(`Finance category ${suffix}`);
+  await dialog
+    .getByRole("button", { name: "Save category", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  dialog = await openReference(
+    page,
+    "Payment reference",
+    "Add payment reference",
+  );
+  await dialog
+    .getByLabel("Reference nickname")
+    .fill(`Invoice reference ${suffix}`);
+  await dialog
+    .getByRole("button", { name: "Save payment reference", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page
+      .getByRole("combobox", { name: "Payment reference", exact: true })
+      .locator("option:checked"),
+  ).toHaveText(`Invoice reference ${suffix}`);
+  await expect(page.getByLabel("Software name", { exact: true })).toHaveValue(
+    "Finance unsaved draft",
+  );
+});
+
+test("Staff retain software editing access without reference creation or employee administration", async ({
+  page,
+}) => {
+  await login(page, "staff");
+  await page.goto("/software/new");
+  for (const name of [
+    "Vendor",
+    "Category",
+    "Department",
+    "Responsible employee",
+    "Payment reference",
+  ])
+    await expect(
+      page
+        .getByRole("combobox", { name, exact: true })
+        .locator('option[value="__create__"]'),
+    ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Save software", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Software name", { exact: true }).fill("Staff draft");
+  await page
+    .getByRole("combobox", { name: "Department", exact: true })
+    .selectOption(team);
+  await page
+    .getByRole("combobox", { name: "Responsible employee", exact: true })
+    .selectOption(ids.staff);
+  await page
+    .getByRole("button", { name: "About Responsible employee", exact: true })
+    .focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tooltip")).toContainText(
+    "Ownership does not grant edit access",
+  );
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tooltip")).not.toBeVisible();
+});
+
+test("inline employee invitation uses the existing password setup flow and never selects an unapproved owner", async ({
+  page,
+}) => {
+  await login(page, "admin");
+  await page.goto("/software/new");
+  await page
+    .getByLabel("Software name", { exact: true })
+    .fill("Draft before onboarding");
+  await page
+    .getByRole("combobox", { name: "Department", exact: true })
+    .selectOption(team);
+  const dialog = await openReference(
+    page,
+    "Responsible employee",
+    "Add responsible employee",
+  );
+  await dialog
+    .getByRole("button", { name: "Invite new employee", exact: true })
+    .click();
+  const email = `e2e-inline-invite-${suffix}@caedm.ca`;
+  await dialog
+    .getByLabel("Employee name", { exact: true })
+    .fill("Inline invited employee");
+  await dialog.getByLabel("Employee work email").fill(email);
+  await expect(
+    dialog.getByRole("combobox", {
+      name: "Invitation department",
+      exact: true,
+    }),
+  ).toHaveValue(team);
+  await dialog
+    .getByRole("button", { name: "Send invitation", exact: true })
+    .click();
+  await expect(dialog.getByRole("status")).toContainText("Invitation sent");
+  await capturedInvitation(email);
+  const invite = await admin
+    .from("employee_invitations")
+    .select("role,team_id,status")
+    .eq("email", email)
+    .single();
+  expect(invite.data).toEqual({
+    role: "staff",
+    team_id: team,
+    status: "pending",
+  });
+  await dialog
+    .getByRole("button", { name: "Back to software", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByLabel("Software name", { exact: true })).toHaveValue(
+    "Draft before onboarding",
+  );
+  await expect(
+    page.getByRole("combobox", { name: "Responsible employee", exact: true }),
+  ).toHaveValue("");
+  await expect(
+    page
+      .getByRole("combobox", { name: "Responsible employee", exact: true })
+      .getByRole("option", { name: "Inline invited employee", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("field information and reference dialogs support keyboard focus, Escape and mobile touch without losing draft values", async ({
+  page,
+  browser,
+}) => {
+  await login(page, "admin");
+  await page.goto("/software/new");
+  const help = page.getByRole("button", {
+    name: "About Billing anchor date",
+    exact: true,
+  });
+  await help.hover();
+  await page.getByRole("tooltip").hover();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect(page.getByRole("tooltip")).not.toBeVisible();
+  await help.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tooltip")).toContainText("month-end");
+  await page.screenshot({
+    path: ".artifacts/software-field-help-desktop.png",
+    animations: "disabled",
+    caret: "initial",
+  });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tooltip")).not.toBeVisible();
+  await expect(help).toBeFocused();
+  await page
+    .getByRole("combobox", { name: "Department", exact: true })
+    .selectOption(team);
+  const dialog = await openReference(
+    page,
+    "Payment reference",
+    "Add payment reference",
+  );
+  const cardHelp = dialog.getByRole("button", {
+    name: "About Last four digits",
+    exact: true,
+  });
+  await page.mouse.move(0, 0);
+  await cardHelp.focus();
+  await page.keyboard.press("Enter");
+  await expect(dialog.getByRole("tooltip")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog.getByRole("tooltip")).not.toBeVisible();
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByRole("button", { name: "Save payment reference", exact: true })
+    .focus();
+  await page.keyboard.press("Tab");
+  await expect(
+    dialog.getByRole("button", { name: "Close reference dialog", exact: true }),
+  ).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await dialog.screenshot({
+    path: ".artifacts/software-payment-modal-mobile.png",
+    animations: "disabled",
+    caret: "initial",
+  });
+  expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Payment reference", exact: true }),
+  ).toBeFocused();
+  const touch = await browser.newContext({
+    isMobile: true,
+    hasTouch: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const mobile = await touch.newPage();
+    await login(mobile, "admin");
+    await mobile.goto("/software/new");
+    await mobile
+      .getByRole("button", { name: "About Billing amount", exact: true })
+      .tap();
+    const tooltip = mobile.getByRole("tooltip");
+    await expect(tooltip).toBeVisible();
+    const bounds = await tooltip.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+    await mobile.screenshot({
+      path: ".artifacts/software-field-help-mobile.png",
+      animations: "disabled",
+      caret: "initial",
+    });
+    await mobile.getByLabel("Software name", { exact: true }).tap();
+    await expect(tooltip).not.toBeVisible();
+  } finally {
+    await touch.close();
+  }
 });
