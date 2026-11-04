@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireAccess } from "@/lib/auth";
 import { ExpenseCorrection } from "@/components/hub/expense-correction";
 import { PageHeading } from "@/components/hub/common";
+import { BetaPill } from "@/components/hub/beta-pill";
 export default async function EditExpense({
   params,
 }: {
@@ -21,6 +22,7 @@ export default async function EditExpense({
       <PageHeading
         eyebrow="FINANCE CENTRE"
         title="Correct an expense"
+        badge={<BetaPill />}
         description="Corrections are retained in the audit history. Original department and payment snapshots are preserved."
       />
       <ExpenseCorrection expense={data} />

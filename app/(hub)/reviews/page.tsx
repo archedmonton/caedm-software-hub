@@ -3,6 +3,8 @@ import { requireAccess } from "@/lib/auth";
 import { reviews } from "@/lib/data";
 import { cents, dueIn, money } from "@/lib/domain";
 import { Empty, PageHeading, Status } from "@/components/hub/common";
+import { FieldHelp } from "@/components/hub/field-help";
+import { reviewHelp } from "@/lib/review-help";
 export default async function Reviews({
   searchParams,
 }: {
@@ -23,7 +25,9 @@ export default async function Reviews({
         eyebrow="KEEP THE RIGHT TOOLS"
         title="Usage reviews"
         description="A small check-in before renewal. A better decision for everyone."
-      />
+      >
+        <FieldHelp id="reviews-overview-help" {...reviewHelp.overview} />
+      </PageHeading>
       <section className="panel">
         <div className="table-toolbar">
           <Link
@@ -51,6 +55,7 @@ export default async function Reviews({
               ? "Your assigned reviews"
               : "Organization reviews"}
           </span>
+          <FieldHelp id="reviews-filters-help" {...reviewHelp.filters} />
         </div>
         {rows.length ? (
           <div className="table-scroll">
@@ -58,10 +63,42 @@ export default async function Reviews({
               <thead>
                 <tr>
                   <th>Software</th>
-                  <th>Renewal amount</th>
-                  <th>Decision deadline</th>
-                  <th>Response</th>
-                  <th>Finance attention</th>
+                  <th>
+                    <span className="review-help-label">
+                      Renewal amount
+                      <FieldHelp
+                        id="reviews-amount-help"
+                        {...reviewHelp.amount}
+                      />
+                    </span>
+                  </th>
+                  <th>
+                    <span className="review-help-label">
+                      Decision deadline
+                      <FieldHelp
+                        id="reviews-deadline-help"
+                        {...reviewHelp.deadline}
+                      />
+                    </span>
+                  </th>
+                  <th>
+                    <span className="review-help-label">
+                      Response
+                      <FieldHelp
+                        id="reviews-response-help"
+                        {...reviewHelp.response}
+                      />
+                    </span>
+                  </th>
+                  <th>
+                    <span className="review-help-label">
+                      Finance attention
+                      <FieldHelp
+                        id="reviews-attention-help"
+                        {...reviewHelp.attention}
+                      />
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>

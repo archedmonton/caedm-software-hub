@@ -3,6 +3,12 @@ import { allRows } from "@/lib/data";
 import { adminRole, financeRole, roleLabels, type Team } from "@/lib/domain";
 import { PageHeading, Status } from "@/components/hub/common";
 import { ActionButton, SimpleForm } from "@/components/hub/controls";
+import { BillingPreferences } from "@/components/hub/billing-preferences";
+import Link from "next/link";
+import {
+  billingReminderDefaults,
+  type BillingReminderPreferences,
+} from "@/lib/billing-reminders";
 export default async function Settings() {
   const { db, profile } = await requireAccess();
   const { data: settings } = await db
@@ -10,7 +16,12 @@ export default async function Settings() {
     .select("*")
     .single();
   const teams = await allRows<Team>(db, "teams");
-  const logs = financeRole(profile.role)
+  const preferenceResult = await db
+    .from("billing_reminder_preferences")
+    .select("enabled,first_notice_days,second_notice_days")
+    .eq("profile_id", profile.id)
+    .maybeSingle();
+  const reviewLogs = financeRole(profile.role)
     ? await allRows<{
         id: string;
         kind: string;
@@ -22,6 +33,26 @@ export default async function Settings() {
         error: string | null;
       }>(db, "notification_logs")
     : [];
+  const billingLogs = financeRole(profile.role)
+    ? await allRows<{
+        id: string;
+        stage: string;
+        status: string;
+        provider: string | null;
+        created_at: string;
+        subject: string | null;
+        body: string | null;
+        error: string | null;
+      }>(
+        db,
+        "billing_notifications",
+        "id,stage,status,provider,created_at,subject,body,error",
+      )
+    : [];
+  const logs = [
+    ...reviewLogs,
+    ...billingLogs.map((log) => ({ ...log, kind: `billing_${log.stage}` })),
+  ];
   return (
     <>
       <PageHeading
@@ -108,11 +139,18 @@ export default async function Settings() {
           <section className="panel p-7">
             <h2>Reminder delivery</h2>
             <p className="text-muted-foreground my-5 text-sm">
-              Run the daily reminder workflow manually. Unique queue records
-              prevent duplicate normal deliveries. Development delivery previews
-              appear below.
+              The production scheduler runs daily at 15:00 UTC, using Edmonton
+              business dates. It delivers personal billing notices (14 and 7
+              days by default) and due usage-review messages. Run it manually to
+              process currently due messages; this does not force future notices
+              or send ordinary duplicates.
             </p>
             <ActionButton action="reminders">Run reminders now</ActionButton>
+            <p className="mt-5 text-sm">
+              <Link className="back-link" href="#billing-reminder-preferences">
+                Customize my billing reminder emails ↓
+              </Link>
+            </p>
             <p className="field-hint mt-5">
               Server credentials and email configuration are managed through
               environment variables. No credentials are displayed here.
@@ -120,6 +158,23 @@ export default async function Settings() {
           </section>
         </div>
       )}
+      <section
+        id="billing-reminder-preferences"
+        className="panel p-7 mt-6 max-w-4xl"
+      >
+        <h2 className="mb-3">Your billing reminders</h2>
+        <p className="text-muted-foreground mb-5 text-sm">
+          Choose when the Hub emails you before the billing date for software
+          you own. Your settings do not change another employee’s preferences.
+        </p>
+        <BillingPreferences
+          preferences={
+            (preferenceResult.data as BillingReminderPreferences | null) ??
+            billingReminderDefaults
+          }
+          available={!preferenceResult.error}
+        />
+      </section>
       {financeRole(profile.role) && (
         <>
           <div className="mt-6">

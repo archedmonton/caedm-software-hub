@@ -1,11 +1,14 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, CircleHelp, XCircle } from "lucide-react";
 import { respondReview, type Result } from "@/app/(hub)/actions";
 import { Feedback } from "@/components/hub/controls";
 import { Button } from "@/components/ui/button";
+import { FieldHelp } from "@/components/hub/field-help";
+import { reviewHelp } from "@/lib/review-help";
 export function ReviewForm({ id }: { id: string }) {
+  const formId = useId();
   const [result, setResult] = useState<Result>({});
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -22,9 +25,15 @@ export function ReviewForm({ id }: { id: string }) {
       }}
       className="space-y-6"
     >
-      <fieldset>
+      <fieldset aria-describedby={formId + "-response-help"}>
         <legend className="font-semibold mb-4">
-          Does your team still need this software?
+          <span className="review-help-label">
+            Does your team still need this software?
+            <FieldHelp
+              id={formId + "-response-help"}
+              {...reviewHelp.response}
+            />
+          </span>
         </legend>
         <div className="review-options">
           {(
@@ -48,15 +57,20 @@ export function ReviewForm({ id }: { id: string }) {
           ))}
         </div>
       </fieldset>
-      <label>
-        Comment (optional)
+      <div className="editor-field">
+        <div className="editor-field-label">
+          <label htmlFor={formId + "-comment"}>Comment (optional)</label>
+          <FieldHelp id={formId + "-comment-help"} {...reviewHelp.comment} />
+        </div>
         <textarea
+          id={formId + "-comment"}
+          aria-describedby={formId + "-comment-help"}
           name="comment"
           rows={4}
           maxLength={3000}
           placeholder="Add context to help Finance make a decision."
         />
-      </label>
+      </div>
       <Feedback result={result} />
       <Button disabled={pending}>
         {pending ? "Submitting…" : "Submit usage confirmation"}

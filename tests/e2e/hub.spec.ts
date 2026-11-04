@@ -314,7 +314,7 @@ test("finance records expenses and downloads safe, complete CSV and Excel report
   page,
 }) => {
   await login(page, "finance");
-  await page.getByRole("link", { name: "Finance Centre", exact: true }).click();
+  await page.getByRole("link", { name: /Finance Centre/ }).click();
   await page.getByText("+ Record a confirmed expense", { exact: true }).click();
   await page
     .getByRole("combobox", { name: "Software", exact: true })
@@ -1412,7 +1412,7 @@ test("Super Admin can grant and revoke elevated access through Team Management",
     page.getByRole("link", { name: "Team Management", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Finance Centre", exact: true }),
+    page.getByRole("link", { name: /Finance Centre/ }),
   ).toBeVisible();
   await page.goto("/team");
   const employee = page.locator("article").filter({ hasText: email });
@@ -2175,5 +2175,277 @@ test("field information and reference dialogs support keyboard focus, Escape and
     await expect(tooltip).not.toBeVisible();
   } finally {
     await touch.close();
+  }
+});
+
+test("software owners save personal billing timings, validation and opt-out without changing another employee", async ({
+  page,
+}) => {
+  await login(page, "staff");
+  await page.goto("/settings");
+  const section = page.locator("section").filter({
+    has: page.getByRole("heading", {
+      name: "Your billing reminders",
+      exact: true,
+    }),
+  });
+  const first = section.getByLabel(
+    "First billing notice (days before billing)",
+    { exact: true },
+  );
+  const second = section.getByLabel(
+    "Second billing notice (days before billing)",
+    { exact: true },
+  );
+  await expect(first).toHaveValue("14");
+  await expect(second).toHaveValue("7");
+  await first.fill("21");
+  await second.fill("3");
+  await section
+    .getByRole("button", { name: "Save billing preferences", exact: true })
+    .click();
+  await expect(section.getByRole("status")).toContainText(
+    "preferences are saved",
+  );
+  await page.reload();
+  await expect(first).toHaveValue("21");
+  await expect(second).toHaveValue("3");
+  await first.fill("3");
+  await second.fill("7");
+  await section
+    .getByRole("button", { name: "Save billing preferences", exact: true })
+    .click();
+  await expect(section.getByRole("alert")).toContainText(
+    "first notice must be earlier",
+  );
+  await page.reload();
+  await expect(first).toHaveValue("21");
+  await section.getByRole("checkbox").uncheck();
+  await section
+    .getByRole("button", { name: "Save billing preferences", exact: true })
+    .click();
+  await expect(section.getByRole("status")).toBeVisible();
+  await page.reload();
+  await expect(section.getByRole("checkbox")).not.toBeChecked();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await section.screenshot({
+    path: ".artifacts/billing-preferences-mobile.png",
+    animations: "disabled",
+    caret: "initial",
+  });
+  await section
+    .getByRole("button", { name: "Restore defaults", exact: true })
+    .click();
+  await section
+    .getByRole("button", { name: "Save billing preferences", exact: true })
+    .click();
+  await expect(section.getByRole("status")).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await login(page, "admin");
+  await page.goto("/settings");
+  await expect(first).toHaveValue("14");
+  await expect(second).toHaveValue("7");
+  expect((await page.request.get("/api/jobs/reminders")).status()).toBe(401);
+});
+
+async function billingFixture(days: number) {
+  const businessDay = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Edmonton",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const next = new Date(businessDay + "T12:00:00Z");
+  next.setUTCDate(next.getUTCDate() + days);
+  const date = next.toISOString().slice(0, 10);
+  const { data, error } = await admin
+    .from("software_subscriptions")
+    .insert({
+      name: `Billing ${days} day ${suffix}`,
+      vendor_id: "20000000-0000-4000-8000-000000000001",
+      team_id: team,
+      owner_id: ids.staff,
+      category: "Productivity",
+      purchase_date: businessDay,
+      purchase_type: "subscription",
+      amount: 123.45,
+      currency: "CAD",
+      billing_cycle: "monthly",
+      billing_start_date: businessDay,
+      next_billing_date: date,
+      cancellation_notice_days: 30,
+      last_reviewed_at: businessDay,
+    })
+    .select("id,name,next_billing_date")
+    .single();
+  if (error || !data)
+    throw new Error("Local billing fixture could not be created");
+  return data as { id: string; name: string; next_billing_date: string };
+}
+test("14-day and 7-day billing reminders deliver branded email exactly once through the real local worker", async ({
+  page,
+  browser,
+}) => {
+  const initial = await billingFixture(14),
+    final = await billingFixture(7);
+  await login(page, "admin");
+  await page.goto("/settings");
+  const run = async () => {
+    await page
+      .getByRole("button", { name: "Run reminders now", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Reminder run complete" }),
+    ).toBeVisible({ timeout: 60000 });
+  };
+  const messages = async () => {
+    const list = await (
+      await fetch(
+        `${config.MAILPIT_URL || config.INBUCKET_URL}/api/v1/messages?limit=1000`,
+      )
+    ).json();
+    return (
+      list.messages as {
+        ID: string;
+        Subject: string;
+        To: { Address: string }[];
+      }[]
+    ).filter(
+      (m) =>
+        m.To.some((t) => t.Address === emails.staff) &&
+        [initial.name, final.name].some((name) => m.Subject.endsWith(name)),
+    );
+  };
+  await run();
+  await expect
+    .poll(async () => (await messages()).length, { timeout: 60000 })
+    .toBe(2);
+  const delivered = await messages();
+  for (const [software, days] of [
+    [initial, 14],
+    [final, 7],
+  ] as const) {
+    const message = delivered.find((m) => m.Subject.endsWith(software.name))!;
+    expect(message.Subject).toContain(`in ${days} days`);
+    const detail = await (
+      await fetch(
+        `${config.MAILPIT_URL || config.INBUCKET_URL}/api/v1/message/${message.ID}`,
+      )
+    ).json();
+    expect(detail.From.Name).toBe("CAEDM Software Hub");
+    expect(detail.HTML).toContain("cid:caedm-logo@software-hub.caedm.ca");
+    expect(detail.Text).toContain(software.next_billing_date);
+    expect(detail.Text).toContain("CAD");
+    expect(detail.Text).toContain(`/software/${software.id}`);
+    if (days === 14) {
+      const preview = await browser.newPage();
+      const logo = await readFile("lib/assets/caedm-logo.png");
+      await preview.setContent(
+        detail.HTML.replaceAll(
+          "cid:caedm-logo@software-hub.caedm.ca",
+          `data:image/png;base64,${logo.toString("base64")}`,
+        ),
+      );
+      await preview.screenshot({
+        path: ".artifacts/billing-reminder-email-desktop.png",
+        fullPage: true,
+        animations: "disabled",
+        caret: "initial",
+      });
+      await preview.setViewportSize({ width: 390, height: 844 });
+      await preview.screenshot({
+        path: ".artifacts/billing-reminder-email-mobile.png",
+        fullPage: true,
+        animations: "disabled",
+        caret: "initial",
+      });
+      await preview.close();
+    }
+  }
+  await run();
+  expect(await messages()).toHaveLength(2);
+});
+
+test("Finance Centre Beta labels and Usage Review field help remain accessible on desktop and mobile", async ({
+  page,
+  browser,
+}) => {
+  await login(page, "finance");
+  await page.goto("/finance");
+  await expect(
+    page
+      .getByRole("link", { name: /Finance Centre/ })
+      .getByText("Beta", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1 }).getByText("Beta", { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: ".artifacts/finance-beta-desktop.png",
+    fullPage: false,
+    animations: "disabled",
+    caret: "initial",
+  });
+  const software = await billingFixture(20);
+  await checked(
+    await admin.from("usage_reviews").insert({
+      subscription_id: software.id,
+      owner_id: ids.staff,
+      renewal_date: software.next_billing_date,
+      deadline: software.next_billing_date,
+    }),
+  );
+  await login(page, "staff");
+  await page.goto("/reviews");
+  const help = page.getByRole("button", {
+    name: "About Decision deadline",
+    exact: true,
+  });
+  await help.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tooltip")).toContainText(
+    "cancellation notice period",
+  );
+  await page.keyboard.press("Escape");
+  await expect(help).toBeFocused();
+  await page.getByRole("link", { name: software.name, exact: true }).click();
+  const responseHelp = page.getByRole("button", {
+    name: "About Usage response",
+    exact: true,
+  });
+  await responseHelp.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tooltip")).toContainText(
+    "does not cancel anything automatically",
+  );
+  await page.keyboard.press("Escape");
+  await page.screenshot({
+    path: ".artifacts/usage-review-help-desktop.png",
+    fullPage: true,
+    animations: "disabled",
+    caret: "initial",
+  });
+  const mobile = await browser.newContext({
+    isMobile: true,
+    hasTouch: true,
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const tab = await mobile.newPage();
+    await login(tab, "staff");
+    await tab.goto("/reviews");
+    await tab
+      .getByRole("button", { name: "About Usage reviews", exact: true })
+      .tap();
+    await expect(tab.getByRole("tooltip")).toBeVisible();
+    await tab.screenshot({
+      path: ".artifacts/usage-review-help-mobile.png",
+      fullPage: false,
+      animations: "disabled",
+      caret: "initial",
+    });
+  } finally {
+    await mobile.close();
   }
 });

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BetaPill } from "@/components/hub/beta-pill";
 import { Download } from "lucide-react";
 import { addDays, format, parseISO } from "date-fns";
 import { requireAccess } from "@/lib/auth";
@@ -68,6 +69,7 @@ export default async function Finance({
       <PageHeading
         eyebrow="FINANCIAL STEWARDSHIP"
         title="Finance centre"
+        badge={<BetaPill />}
         description="Confirmed spending, future commitments, and reports you can trust."
       />
       <ExpenseForm

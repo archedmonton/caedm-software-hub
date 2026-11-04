@@ -349,9 +349,11 @@ export const helpArticles: HelpArticle[] = [
       "The software owner tells Finance whether a subscription is still needed.",
     steps: [
       "Open Usage Reviews and select an outstanding review assigned to you.",
+      "Use the i buttons beside filters, renewal amount, decision deadline, response and Finance attention for field-specific guidance. Review details also explain ownership, the captured renewal date and comments. Keyboard and touch are supported; Escape closes the information popup.",
       "Choose Still Needed, Not Needed or Unsure and add a comment that explains the decision.",
       "Review your answer before submitting: a response is recorded once with a timestamp.",
       "Finance receives a queued notification. A Not Needed response does not automatically cancel the vendor subscription. Contact your administrator if a submitted answer needs clarification.",
+      "Usage reviews use the cancellation decision deadline and review frequency. Personal billing emails use the expected billing date and continue independently, even after a review is answered.",
     ],
   },
   {
@@ -361,6 +363,7 @@ export const helpArticles: HelpArticle[] = [
     title: "How do I record and correct an expense?",
     summary: "Record confirmed spending separately from payment forecasts.",
     steps: [
+      "Finance Centre is marked Beta in navigation, page headings and expense correction screens while the team evaluates it. Its role permissions, audit history, currencies and separation of forecasts from recorded expenses still apply. Share issues through Request a Feature.",
       "Open Finance Centre and record the actual transaction against its software record, including date, amount, tax, currency and references.",
       "Enter tax explicitly; projected amounts do not calculate or invent tax.",
       "Use the expense correction form to correct a mistake. The application retains audit history rather than silently discarding the original information.",
@@ -442,9 +445,25 @@ export const helpArticles: HelpArticle[] = [
       "Settings contains organization preferences, reminder rules and shared reference data.",
     steps: [
       "Review organization settings, reporting currencies, initial review notice and follow-up notice. The organization timezone is America/Edmonton.",
-      "Run reminders now creates due reviews and attempts queued notifications. Check notification activity for delivery failures.",
+      "The production scheduler runs daily at 15:00 UTC and evaluates dates in America/Edmonton. Run reminders now prepares due billing notices and reviews, then attempts queued deliveries. It does not force future notices. Check notification activity for delivery failures; use only one scheduler where possible.",
+      "Personal billing reminders default to 14 and 7 days before the expected billing date. Each verified active software owner can change their own timings or opt out in Settings. These preferences do not disable usage review requests, follow-ups or Finance escalations.",
       "Keep vendors and payment references current. Store only limited card references, such as the last four digits; never enter full card numbers, CVVs or vendor passwords.",
       "Email delivery and scheduled reminder operation require administrator setup. Contact the person responsible for hosting or email if failures continue.",
+    ],
+  },
+  {
+    id: "billing-preferences",
+    category: "Renewals & reviews",
+    access: "workspace",
+    title: "How do I customize my billing reminder emails?",
+    summary:
+      "Choose personal notice timings for subscriptions you own. Defaults are 14 and 7 days before billing.",
+    steps: [
+      "Open Settings → Your billing reminders. Keep email enabled to receive notices for active subscriptions you own, then set the first and second notices in calendar days before billing. The first number must be larger than the second, with values from 2–365 and 1–364 respectively.",
+      "Save billing preferences to apply your choices. Restore defaults returns to 14 and 7 days with email enabled; save afterward to keep those defaults. Your preferences do not change another person's settings or organization usage-review rules.",
+      "The scheduler uses Edmonton business dates. If a run was missed, it sends only the latest due notice rather than both at once. No billing notice is sent on or after the expected billing date. A new billing cycle can receive a new pair of notices.",
+      "Paused billing, cancelled/expired/archived software, one-time purchases and software without an eligible verified department owner do not receive these emails. Ownership, dates and preferences are checked again before claiming a queued notice. A message already in delivery may still arrive after a preference change.",
+      "A billing reminder shows the expected date and original currency and links to the authenticated software record. It is a forecast, not an invoice, a recorded expense or a cancellation confirmation. Usage review requests and Finance escalations remain separate.",
     ],
   },
   {

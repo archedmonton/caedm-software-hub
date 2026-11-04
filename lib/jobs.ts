@@ -3,6 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import { appUrl, publicConfig } from "@/lib/env";
 import { emailProvider } from "@/lib/email";
 import { cents, money } from "@/lib/domain";
+import {
+  billingReminderMessage,
+  type BillingNotification,
+} from "@/lib/billing-reminders";
 type Notification = {
   id: string;
   claim_token: string;
@@ -17,6 +21,7 @@ type Notification = {
   currency: string;
 };
 export async function runReminders() {
+  const billingDeadline = Date.now() + 240000;
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY)
     throw new Error("The reminder server credential is missing.");
   const provider = emailProvider();
@@ -28,6 +33,8 @@ export async function runReminders() {
   );
   const { error } = await db.rpc("prepare_reminders");
   if (error) throw new Error("Could not prepare reminders.");
+  const { error: billingError } = await db.rpc("prepare_billing_notifications");
+  if (billingError) throw new Error("Could not prepare billing reminders.");
   const { data, error: claimError } = await db.rpc("claim_notifications");
   if (claimError) throw new Error("Could not claim notification queue.");
   let sent = 0,
@@ -61,6 +68,45 @@ export async function runReminders() {
       );
     if (successful) sent++;
     else failed++;
+  }
+  for (
+    let batch = 0;
+    batch < 20 && Date.now() < billingDeadline - 90000;
+    batch++
+  ) {
+    const { data: billing, error: billingClaimError } = await db.rpc(
+      "claim_billing_notifications",
+    );
+    if (billingClaimError)
+      throw new Error("Could not claim billing notification queue.");
+    if (!billing?.length) break;
+    for (const n of billing as BillingNotification[]) {
+      const message = billingReminderMessage(n, origin);
+      let successful = false;
+      try {
+        await provider.send({ id: n.id, to: n.email, ...message });
+        successful = true;
+      } catch {
+        /* Persist safe failure details only. */
+      }
+      const { data: finished, error: finishError } = await db.rpc(
+        "finish_billing_notification",
+        {
+          notification: n.id,
+          token: n.claim_token,
+          successful,
+          email_provider: provider.name,
+          email_subject: message.subject,
+          email_body: message.text,
+        },
+      );
+      if (finishError || !finished)
+        throw new Error(
+          "Billing delivery state could not be saved. Check notification activity before retrying.",
+        );
+      if (successful) sent++;
+      else failed++;
+    }
   }
   return { sent, failed };
 }

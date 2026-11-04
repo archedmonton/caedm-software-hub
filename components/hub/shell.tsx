@@ -21,6 +21,7 @@ import { adminRole, financeRole, roleLabels } from "@/lib/domain";
 import { logout } from "@/app/auth/actions";
 import { Brand } from "@/components/hub/brand";
 import { HelpCenter } from "@/components/hub/help-center";
+import { BetaPill } from "@/components/hub/beta-pill";
 const navigation = [
   ["Dashboard", "/dashboard", LayoutDashboard],
   ["Software Inventory", "/software", Layers3],
@@ -68,6 +69,7 @@ export function Shell({
             >
               <Icon size={18} />
               <span>{label}</span>
+              {href === "/finance" && <BetaPill />}
               {href === "/reviews" && notifications > 0 && (
                 <span className="nav-count">{notifications}</span>
               )}
@@ -122,6 +124,7 @@ export function Shell({
             </span>
             <span className="text-slate-300 hidden sm:inline">/</span>
             <strong>{active?.[0] || "Software Hub"}</strong>
+            {path.startsWith("/finance") && <BetaPill />}
           </div>
           <div className="topbar-actions">
             <HelpCenter role={profile.role} />

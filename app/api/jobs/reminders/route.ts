@@ -3,6 +3,8 @@ import { NextRequest } from "next/server";
 import { runReminders } from "@/lib/jobs";
 export const runtime = "nodejs";
 export const maxDuration = 300;
+// Vercel Cron invokes GET; external authenticated POST schedulers remain supported.
+export const GET = POST;
 export async function POST(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const supplied = request.headers.get("authorization") || "";

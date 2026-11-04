@@ -1,4 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "node -e \"const {execFileSync}=require('node:child_process');process.exit(execFileSync('git',['log','-1','--format=%B'],{encoding:'utf8'}).includes('[skip vercel]')?0:1)\""
+  "ignoreCommand": "node -e \"const {execFileSync}=require('node:child_process');process.exit(execFileSync('git',['log','-1','--format=%B'],{encoding:'utf8'}).includes('[skip vercel]')?0:1)\"",
+  "crons": [{ "path": "/api/jobs/reminders", "schedule": "0 15 * * *" }]
 }

@@ -6,17 +6,22 @@ export function PageHeading({
   title,
   description,
   children,
+  badge,
 }: {
   eyebrow: string;
   title: string;
   description: string;
   children?: React.ReactNode;
+  badge?: React.ReactNode;
 }) {
   return (
     <div className="page-heading">
       <div>
         <span className="eyebrow">{eyebrow}</span>
-        <h1>{title}</h1>
+        <h1>
+          {title}
+          {badge && <span className="heading-badge">{badge}</span>}
+        </h1>
         <p>{description}</p>
       </div>
       <div className="heading-actions">{children}</div>
