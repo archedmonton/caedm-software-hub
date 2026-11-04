@@ -11,7 +11,11 @@ import {
 } from "@/lib/invitations";
 import { limitAuth } from "@/lib/rate-limit";
 
-export type InvitationState = { error?: string; success?: string };
+export type InvitationState = {
+  error?: string;
+  success?: string;
+  field?: "email";
+};
 export async function inviteEmployee(
   _state: InvitationState,
   form: FormData,
@@ -37,6 +41,16 @@ export async function inviteEmployee(
     };
   } catch (error) {
     revalidatePath("/team");
+    if (
+      error instanceof Error &&
+      /already (?:has an account|exists)/i.test(error.message)
+    )
+      return {
+        error: /invitation already exists/i.test(error.message)
+          ? "This email already has an invitation in the list. Use Resend invitation in Team Management instead of creating another."
+          : "This employee email is already in the list. Select the existing person from Responsible employee or add their department access using Existing employee. Manage pending or inactive accounts in Team Management.",
+        field: "email",
+      };
     return {
       error:
         error instanceof Error

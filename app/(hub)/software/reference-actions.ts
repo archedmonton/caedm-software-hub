@@ -6,6 +6,7 @@ import {
   referenceKinds,
   referenceSchemas,
   employeeMembershipSchema,
+  duplicateReferenceMessage,
   type ReferenceKind,
   type ReferenceResult,
   type EditorEmployee,
@@ -40,8 +41,8 @@ export async function createSoftwareReference(
       .single();
     if (saved.error?.code === "23505") {
       return {
-        error:
-          "This department already has a payment reference with that nickname. Select it from the list or use a different nickname.",
+        error: duplicateReferenceMessage(kind),
+        field: "nickname",
       };
     }
     if (saved.error)
@@ -61,15 +62,7 @@ export async function createSoftwareReference(
         : "teams";
   const saved = await db.from(table).insert(values).select("id,name").single();
   if (saved.error?.code === "23505") {
-    // Escape SQL LIKE wildcards so a literal name cannot match an unrelated reference.
-    const pattern = values.name.replace(/[\\%_]/g, "\\$&");
-    const existing = await db
-      .from(table)
-      .select("id,name")
-      .ilike("name", pattern)
-      .limit(1)
-      .maybeSingle();
-    if (existing.data) return { reference: existing.data, reused: true };
+    return { error: duplicateReferenceMessage(kind), field: "name" };
   }
   if (saved.error)
     return {
@@ -97,6 +90,11 @@ export async function assignSoftwareEmployee(input: unknown): Promise<{
       employee: parsed.data.profile_id,
     })
     .single();
+  if (error?.code === "23505")
+    return {
+      error:
+        "This employee is already in the list for this department. Select them from Responsible employee instead.",
+    };
   if (error || !data)
     return {
       error:

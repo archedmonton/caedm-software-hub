@@ -4,15 +4,18 @@ import { X, Plus, MailPlus, UserRoundPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FieldHelp } from "@/components/hub/field-help";
 import { InviteEmployeeForm } from "@/components/hub/invitation-form";
+import { SubmissionError } from "@/components/hub/submission-error";
 import {
   createSoftwareReference,
   assignSoftwareEmployee,
 } from "@/app/(hub)/software/reference-actions";
 import type { Team } from "@/lib/domain";
-import type {
-  ReferenceKind,
-  ReferenceResult,
-  EditorEmployee,
+import {
+  referenceNameKey,
+  duplicateReferenceMessage,
+  type ReferenceKind,
+  type ReferenceResult,
+  type EditorEmployee,
 } from "@/lib/software-reference";
 
 export type EditorDialogKind = ReferenceKind | "employee";
@@ -27,6 +30,7 @@ export function SoftwareReferenceDialog({
   kind,
   team,
   candidates,
+  existingNames,
   onClose,
   onCreated,
   onEmployee,
@@ -34,19 +38,33 @@ export function SoftwareReferenceDialog({
   kind: EditorDialogKind;
   team?: Team;
   candidates: EditorEmployee[];
+  existingNames: string[];
   onClose: () => void;
   onCreated: (kind: ReferenceKind, result: ReferenceResult) => void;
   onEmployee: (employee: EditorEmployee, canManage: boolean) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const id = useId();
-  const [error, setError] = useState("");
+  const [error, setError] = useState<{
+    message: string;
+    field?: string;
+    attempt: number;
+  } | null>(null);
+  const attempt = useRef(0);
+  const reportError = (message: string, field?: string) =>
+    setError({ message, field, attempt: ++attempt.current });
   const [employeeMode, setEmployeeMode] = useState<"existing" | "invite">(
     "existing",
   );
   const [pending, start] = useTransition();
   const [inviting, setInviting] = useState(false);
   const busy = pending || inviting;
+  useEffect(() => {
+    if (error?.field && !busy)
+      dialog.current
+        ?.querySelector<HTMLElement>(`[name="${error.field}"]`)
+        ?.focus();
+  }, [error, busy]);
   useEffect(() => {
     const previous =
       document.activeElement instanceof HTMLElement
@@ -124,7 +142,7 @@ export function SoftwareReferenceDialog({
               disabled={busy}
               onClick={() => {
                 setEmployeeMode("existing");
-                setError("");
+                setError(null);
               }}
             >
               <UserRoundPlus size={16} aria-hidden="true" />
@@ -136,7 +154,7 @@ export function SoftwareReferenceDialog({
               disabled={busy}
               onClick={() => {
                 setEmployeeMode("invite");
-                setError("");
+                setError(null);
               }}
             >
               <MailPlus size={16} aria-hidden="true" />
@@ -171,11 +189,24 @@ export function SoftwareReferenceDialog({
         ) : (
           <form
             className="reference-create-form"
+            onChange={() => setError(null)}
             onSubmit={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setError("");
+              setError(null);
               const values = Object.fromEntries(new FormData(e.currentTarget));
+              const nameField = kind === "payment" ? "nickname" : "name";
+              if (
+                !employee &&
+                existingNames.some(
+                  (name) =>
+                    referenceNameKey(name) ===
+                    referenceNameKey(String(values[nameField] || "")),
+                )
+              ) {
+                reportError(duplicateReferenceMessage(kind), nameField);
+                return;
+              }
               start(async () => {
                 try {
                   if (employee) {
@@ -184,7 +215,7 @@ export function SoftwareReferenceDialog({
                       team_id: team?.id,
                     });
                     if (result.error) {
-                      setError(result.error);
+                      reportError(result.error, "profile_id");
                       return;
                     }
                     if (result.employee) {
@@ -197,14 +228,14 @@ export function SoftwareReferenceDialog({
                       ...(kind === "payment" ? { team_id: team?.id } : {}),
                     });
                     if (result.error) {
-                      setError(result.error);
+                      reportError(result.error, result.field);
                       return;
                     }
                     onCreated(kind, result);
                     onClose();
                   }
                 } catch {
-                  setError(
+                  reportError(
                     "The save could not be confirmed. Your entries are still here. Check your connection before retrying.",
                   );
                 }
@@ -216,7 +247,17 @@ export function SoftwareReferenceDialog({
                 <>
                   <label>
                     Active employee
-                    <select name="profile_id" required defaultValue="">
+                    <select
+                      name="profile_id"
+                      required
+                      defaultValue=""
+                      aria-invalid={error?.field === "profile_id"}
+                      aria-describedby={
+                        error?.field === "profile_id"
+                          ? id + "-error"
+                          : undefined
+                      }
+                    >
                       <option value="" disabled>
                         Select an employee
                       </option>
@@ -251,6 +292,10 @@ export function SoftwareReferenceDialog({
                     Reference nickname
                     <input
                       name="nickname"
+                      aria-invalid={error?.field === "nickname"}
+                      aria-describedby={
+                        error?.field === "nickname" ? id + "-error" : undefined
+                      }
                       required
                       maxLength={100}
                       placeholder="For example, Department purchasing card"
@@ -305,6 +350,10 @@ export function SoftwareReferenceDialog({
                       : "Department name"}
                   <input
                     name="name"
+                    aria-invalid={error?.field === "name"}
+                    aria-describedby={
+                      error?.field === "name" ? id + "-error" : undefined
+                    }
                     required
                     maxLength={
                       kind === "vendor" ? 150 : kind === "category" ? 80 : 100
@@ -315,9 +364,11 @@ export function SoftwareReferenceDialog({
               )}
             </fieldset>
             {error && (
-              <p className="notice error" role="alert">
-                {error}
-              </p>
+              <SubmissionError
+                key={error.attempt}
+                id={id + "-error"}
+                message={error.message}
+              />
             )}
             <div className="reference-dialog-actions">
               <Button

@@ -1010,6 +1010,32 @@ tbody tr:hover {
 body:has(.reference-dialog[open]) {
   overflow: hidden;
 }
+.notice.error.submission-error {
+  border-inline-start: 3px solid #bf311a;
+}
+.reference-dialog [aria-invalid="true"],
+.invitation-form [aria-invalid="true"] {
+  border-color: #bf311a;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .submission-error {
+    animation: submission-error-shake 280ms ease-out 1;
+  }
+}
+@keyframes submission-error-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
+}
 .reference-dialog {
   width: min(600px, calc(100% - 32px));
   max-height: calc(100dvh - 40px);

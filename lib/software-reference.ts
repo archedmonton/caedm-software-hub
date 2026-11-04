@@ -23,10 +23,16 @@ export type EditorMember = {
 };
 export type ReferenceResult = {
   error?: string;
-  reused?: boolean;
+  field?: "name" | "nickname";
   reference?: NamedReference;
   payment?: PaymentReference;
 };
+export const referenceNameKey = (name: string) => name.trim().toLowerCase();
+export function duplicateReferenceMessage(kind: ReferenceKind) {
+  return kind === "payment"
+    ? "This payment reference nickname is already in the list for this department. Select the existing reference or use a different nickname."
+    : `This ${kind} name is already in the list. Select the existing ${kind} or use a different name.`;
+}
 export const referenceSchemas = {
   vendor: z.object({
     name: z.string().trim().min(1, "Enter the vendor name.").max(150),
@@ -68,19 +74,19 @@ export const softwareFieldHelp: Record<
 > = {
   vendor_id: {
     title: "Vendor",
-    text: "The company supplying or billing for this software. Finance and administrators can add a vendor from this list.",
+    text: "The company supplying or billing for this software. Finance and administrators can choose Add vendor directly below Select a vendor. Existing names, ignoring case and surrounding spaces, must be selected instead of added again.",
   },
   category: {
     title: "Category",
-    text: "Group similar software for inventory filters and reports. Choose an existing category first; Finance and administrators can add a shared category.",
+    text: "Group similar software for inventory filters and reports. Add category is directly below Select a category for Finance and administrators. Choose an existing category when its name is already listed; changing case or surrounding spaces does not create a new category.",
   },
   team_id: {
     title: "Department",
-    text: "The department responsible for this purchase. Staff access, eligible owners and payment references follow this department. Administrators can add departments here.",
+    text: "The department responsible for this purchase. Staff access, eligible owners and payment references follow this department. Administrators find Add department directly below Select a department. Existing department names cannot be added again, including case or surrounding-space variants.",
   },
   owner_id: {
     title: "Responsible employee",
-    text: "An active, verified member of the selected department who receives usage reviews. Ownership does not grant edit access. Administrators can add an existing employee to the department or invite a new employee; invitees must complete password setup before they can be selected.",
+    text: "An active, verified department member who receives usage reviews. Add responsible employee appears directly below Unassigned for administrators. Select people already listed; Existing employee adds someone who is not yet a department member. Invite new employee is for a new work email, and password setup must finish before ownership. People are identified by email, since names may be shared. Ownership does not grant edit access.",
   },
   cost_centre: {
     title: "Cost centre",
@@ -144,7 +150,7 @@ export const softwareFieldHelp: Record<
   },
   payment_method_id: {
     title: "Payment reference",
-    text: "A department-specific nickname for the payment method, with optional card brand and last four digits. Finance and administrators can add one here. Never enter a full card number, CVV, bank credentials or passwords.",
+    text: "A department-specific nickname with optional card brand and last four digits. Finance and administrators find Add payment reference directly below No payment reference after selecting a department. Duplicate nicknames are rejected within that department, ignoring case and surrounding spaces. Never enter a full card number, CVV, bank credentials or passwords.",
   },
   invoice_reference: {
     title: "Invoice reference",

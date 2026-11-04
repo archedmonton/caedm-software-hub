@@ -69,6 +69,118 @@ test("category constraints reject case-duplicate and blank names without changin
       ).rejects.toThrow();
   });
 });
+
+test("PostgreSQL rejects normalized duplicate vendor and department inserts and renames without changing existing IDs", async () => {
+  await asUser(db, ids.admin, async () => {
+    for (const table of ["vendors", "teams"]) {
+      const name = `Original ${table} %_`;
+      const original = (
+        await db.query(
+          `insert into ${table}(name) values($1) returning id,name`,
+          [name],
+        )
+      ).rows[0];
+      for (const variant of [
+        name,
+        name.toUpperCase(),
+        `  ${name.toLowerCase()}  `,
+      ])
+        await expect(
+          db.query(`insert into ${table}(name) values($1)`, [variant]),
+        ).rejects.toMatchObject({ code: "23505" });
+      const another = (
+        await db.query(`insert into ${table}(name) values($1) returning id`, [
+          `Another ${table}`,
+        ])
+      ).rows[0];
+      await expect(
+        db.query(`update ${table} set name=$1 where id=$2`, [
+          name.toLowerCase(),
+          another.id,
+        ]),
+      ).rejects.toMatchObject({ code: "23505" });
+      expect(
+        (
+          await db.query(`select id,name from ${table} where id=$1`, [
+            original.id,
+          ])
+        ).rows[0],
+      ).toEqual(original);
+    }
+  });
+});
+
+test("payment nicknames reject case and space variants within a department while allowing the same name elsewhere", async () => {
+  await asUser(db, ids.finance, async () => {
+    await db.query(
+      "insert into payment_methods(team_id,nickname) values($1,'Unique procurement')",
+      [department],
+    );
+    await expect(
+      db.query(
+        "insert into payment_methods(team_id,nickname) values($1,'  UNIQUE PROCUREMENT  ')",
+        [department],
+      ),
+    ).rejects.toMatchObject({ code: "23505" });
+    const separate = (
+      await db.query(
+        "insert into payment_methods(team_id,nickname) values($1,'UNIQUE PROCUREMENT') returning id",
+        [otherDepartment],
+      )
+    ).rows[0];
+    await expect(
+      db.query("update payment_methods set team_id=$1 where id=$2", [
+        department,
+        separate.id,
+      ]),
+    ).rejects.toMatchObject({ code: "23505" });
+  });
+});
+
+test("duplicate migration preserves historical names, expense rows and existing case variants", async () => {
+  const upgrade = await database({ beforeVersion: "202611040001" });
+  try {
+    await fixtures(upgrade);
+    await upgrade.query(
+      "insert into vendors(name) values('Legacy Vendor'),('legacy vendor')",
+    );
+    await upgrade.query(
+      "insert into teams(name) values('Legacy Team'),('legacy team')",
+    );
+    await asUser(upgrade, ids.finance, () =>
+      upgrade.exec(
+        "insert into expense_records(subscription_id,transaction_date,amount,tax,currency,invoice_reference) select id,current_date,20,1,'CAD','DUPLICATE-UPGRADE' from software_subscriptions order by id limit 1",
+      ),
+    );
+    const snapshot = async () => ({
+      vendors: (await upgrade.query("select * from vendors order by id")).rows,
+      teams: (await upgrade.query("select * from teams order by id")).rows,
+      software: (
+        await upgrade.query("select * from software_subscriptions order by id")
+      ).rows,
+      expenses: (
+        await upgrade.query("select * from expense_records order by id")
+      ).rows,
+    });
+    const before = await snapshot();
+    await upgrade.exec(
+      await readFile(
+        "supabase/migrations/202611040001_reference_duplicates.sql",
+        "utf8",
+      ),
+    );
+    expect(await snapshot()).toEqual(before);
+    await expect(
+      upgrade.query("insert into vendors(name) values(' LEGACY VENDOR ')"),
+    ).rejects.toMatchObject({ code: "23505" });
+    // An unchanged legacy spelling remains editable without forcing a merge.
+    await upgrade.query(
+      "update vendors set name=name where lower(name)='legacy vendor'",
+    );
+  } finally {
+    await upgrade.close();
+  }
+}, 30000);
 test("only administrators can discover eligible employees; protected, pending and unverified accounts are omitted", async () => {
   const rows = await asUser(db, ids.admin, () =>
     db.query("select * from software_employee_candidates()"),
@@ -85,7 +197,7 @@ test("only administrators can discover eligible employees; protected, pending an
       ).rejects.toThrow(),
     );
 });
-test("administrator assignment grants View access and preserves existing Manage permission", async () => {
+test("administrator assignment grants View access and rejects duplicate membership without changing Manage permission", async () => {
   const rows = await asUser(db, ids.admin, () =>
     db.query("select * from assign_software_employee($1,$2)", [
       department,
@@ -100,13 +212,30 @@ test("administrator assignment grants View access and preserves existing Manage 
       ])
     ).rows[0],
   ).toEqual({ role: "staff", status: "active" });
-  const existing = await asUser(db, ids.admin, () =>
-    db.query("select * from assign_software_employee($1,$2)", [
-      otherDepartment,
-      ids.other,
-    ]),
+  await asUser(db, ids.admin, () =>
+    expect(
+      db.query("select * from assign_software_employee($1,$2)", [
+        otherDepartment,
+        ids.other,
+      ]),
+    ).rejects.toMatchObject({ code: "23505" }),
   );
-  expect(existing.rows[0].can_manage).toBe(true);
+  expect(
+    (
+      await db.query(
+        "select can_manage from team_members where team_id=$1 and profile_id=$2",
+        [otherDepartment, ids.other],
+      )
+    ).rows[0].can_manage,
+  ).toBe(true);
+  await asUser(db, ids.admin, () =>
+    expect(
+      db.query("select * from assign_software_employee($1,$2)", [
+        department,
+        ids.other,
+      ]),
+    ).rejects.toMatchObject({ code: "23505" }),
+  );
 });
 test("direct RPC calls cannot bypass role, verification, department or protected developer guards", async () => {
   for (const actor of [ids.finance, ids.staff, ids.pending, ids.unverified])

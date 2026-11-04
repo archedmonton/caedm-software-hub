@@ -123,4 +123,45 @@ describe("software reference validation and action authorization", () => {
     });
     expect(result.can_manage).toBe(false);
   });
+  test.each(["vendor", "category", "department", "payment"] as const)(
+    "%s duplicate failures stay errors rather than silently selecting an existing entry",
+    async (kind) => {
+      context.role = "admin";
+      const select = vi.fn(() => ({
+        single: async () => ({ data: null, error: { code: "23505" } }),
+      }));
+      context.from.mockReturnValue({ insert: () => ({ select }) });
+      const result = await createSoftwareReference(
+        kind,
+        kind === "payment"
+          ? {
+              team_id: "10000000-0000-4000-8000-000000000001",
+              nickname: "Purchasing",
+              brand: "",
+              last_four: "",
+              notes: "",
+            }
+          : { name: "Already listed" },
+      );
+      expect(result).toMatchObject({
+        error: expect.stringContaining("already in the list"),
+        field: kind === "payment" ? "nickname" : "name",
+      });
+      expect(result.reference).toBeUndefined();
+      expect(result.payment).toBeUndefined();
+      expect(context.from).toHaveBeenCalledTimes(1);
+    },
+  );
+  test("stale employee assignment returns a duplicate error rather than a successful reassignment", async () => {
+    context.role = "admin";
+    context.rpc.mockReturnValue({
+      single: async () => ({ data: null, error: { code: "23505" } }),
+    });
+    expect(
+      await assignSoftwareEmployee({
+        team_id: "10000000-0000-4000-8000-000000000001",
+        profile_id: "90000000-0000-4000-8000-000000000003",
+      }),
+    ).toEqual({ error: expect.stringContaining("already in the list") });
+  });
 });

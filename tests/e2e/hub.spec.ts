@@ -1534,6 +1534,195 @@ test("Help explains all four roles with an accessible comparison on desktop and 
   await expect(help).not.toBeVisible();
 });
 
+test("reference dropdowns prioritize Add and duplicates show accessible, motion-aware errors without losing the draft", async ({
+  page,
+}) => {
+  await login(page, "admin");
+  await page.goto("/software/new");
+  await page
+    .getByLabel("Software name", { exact: true })
+    .fill("Duplicate feedback draft");
+  for (const field of [
+    "Vendor",
+    "Category",
+    "Department",
+    "Responsible employee",
+    "Payment reference",
+  ]) {
+    const options = page
+      .getByRole("combobox", { name: field, exact: true })
+      .locator("option");
+    await expect(options.nth(0)).toHaveAttribute("value", "");
+    await expect(options.nth(1)).toHaveAttribute("value", "__create__");
+    if (["Responsible employee", "Payment reference"].includes(field))
+      await expect(options.nth(1)).toBeDisabled();
+  }
+  await page
+    .getByRole("combobox", { name: "Department", exact: true })
+    .selectOption(team);
+  await page
+    .getByRole("combobox", { name: "Responsible employee", exact: true })
+    .selectOption(ids.staff);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.evaluate(() =>
+    document.addEventListener("animationstart", (event) => {
+      if (
+        (event as AnimationEvent).animationName === "submission-error-shake"
+      ) {
+        const root = document.documentElement;
+        root.dataset.errorShakes = String(
+          Number(root.dataset.errorShakes || 0) + 1,
+        );
+      }
+    }),
+  );
+  const vendor = await admin
+    .from("vendors")
+    .select("name")
+    .eq("id", "20000000-0000-4000-8000-000000000001")
+    .single();
+  const department = await admin
+    .from("teams")
+    .select("name")
+    .eq("id", team)
+    .single();
+  for (const [field, title, label, name] of [
+    ["Vendor", "Add vendor", "Vendor name", vendor.data!.name],
+    ["Category", "Add category", "Category name", "Productivity"],
+    ["Department", "Add department", "Department name", department.data!.name],
+  ]) {
+    const dialog = await openReference(page, field, title);
+    const input = dialog.getByLabel(label, { exact: true });
+    await input.fill(`  ${name.toUpperCase()}  `);
+    await dialog
+      .getByRole("button", { name: `Save ${field.toLowerCase()}`, exact: true })
+      .click();
+    const alert = dialog.getByRole("alert");
+    await expect(alert).toContainText("already in the list");
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(await input.getAttribute("aria-describedby")).toBe(
+      await alert.getAttribute("id"),
+    );
+    expect(
+      await alert.evaluate((el) => getComputedStyle(el).animationName),
+    ).toBe("submission-error-shake");
+    if (field === "Category") {
+      const shakes = Number(
+        await page.locator("html").getAttribute("data-error-shakes"),
+      );
+      await dialog
+        .getByRole("button", { name: "Save category", exact: true })
+        .click();
+      await expect
+        .poll(async () =>
+          Number(await page.locator("html").getAttribute("data-error-shakes")),
+        )
+        .toBeGreaterThan(shakes);
+      await dialog.screenshot({
+        path: ".artifacts/software-duplicate-error-desktop.png",
+        animations: "disabled",
+        caret: "initial",
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await dialog.screenshot({
+        path: ".artifacts/software-duplicate-error-mobile.png",
+        animations: "disabled",
+        caret: "initial",
+      });
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      expect(
+        await alert.evaluate((el) => getComputedStyle(el).animationName),
+      ).toBe("none");
+      await expect(alert).toBeVisible();
+      await input.fill("Revised unsaved category");
+      await expect(alert).toHaveCount(0);
+      await expect(input).toHaveAttribute("aria-invalid", "false");
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+    }
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  }
+  const dialog = await openReference(
+    page,
+    "Responsible employee",
+    "Add responsible employee",
+  );
+  await expect(
+    dialog
+      .getByRole("combobox", { name: "Active employee", exact: true })
+      .locator(`option[value="${ids.staff}"]`),
+  ).toHaveCount(0);
+  await dialog
+    .getByRole("button", { name: "Invite new employee", exact: true })
+    .click();
+  await dialog
+    .getByLabel("Employee name", { exact: true })
+    .fill("Existing employee");
+  const email = dialog.getByLabel("Employee work email");
+  await email.fill(emails.staff.toUpperCase());
+  await dialog
+    .getByRole("button", { name: "Send invitation", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "employee email is already in the list",
+  );
+  await expect(email).toBeFocused();
+  await expect(email).toHaveAttribute("aria-invalid", "true");
+  await expect(email).toHaveValue(emails.staff.toUpperCase());
+  await dialog
+    .getByRole("button", { name: "Back to software", exact: true })
+    .click();
+  await expect(page.getByLabel("Software name", { exact: true })).toHaveValue(
+    "Duplicate feedback draft",
+  );
+  await expect(
+    page.getByRole("combobox", { name: "Responsible employee", exact: true }),
+  ).toHaveValue(ids.staff);
+  expect(
+    (
+      await admin
+        .from("employee_invitations")
+        .select("id")
+        .eq("email", emails.staff)
+    ).data,
+  ).toEqual([]);
+  const help = page.getByRole("button", {
+    name: "About Category",
+    exact: true,
+  });
+  await help.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tooltip")).toContainText(
+    "changing case or surrounding spaces",
+  );
+});
+
+test("concurrent signed-in reference inserts allow only one normalized name", async () => {
+  const client = createClient(
+    config.API_URL,
+    config.PUBLISHABLE_KEY || config.ANON_KEY,
+    { auth: { persistSession: false } },
+  );
+  await checked(
+    await client.auth.signInWithPassword({
+      email: emails.admin,
+      password: secret,
+    }),
+  );
+  try {
+    const name = `Concurrent %_ reference ${suffix}`;
+    const results = await Promise.all([
+      client.from("vendors").insert({ name }),
+      client.from("vendors").insert({ name: `  ${name.toUpperCase()}  ` }),
+    ]);
+    expect(results.filter((r) => !r.error)).toHaveLength(1);
+    expect(results.find((r) => r.error)?.error?.code).toBe("23505");
+  } finally {
+    await client.auth.signOut();
+  }
+});
+
 test("Add Software creates and selects references without losing the draft or bypassing employee onboarding", async ({
   page,
 }) => {
@@ -1591,11 +1780,13 @@ test("Add Software creates and selects references without losing the draft or by
   await dialog
     .getByRole("button", { name: "Save category", exact: true })
     .click();
-  await expect(dialog).not.toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("alert")).toContainText("already in the list");
+  await expect(dialog.getByLabel("Category name")).toBeFocused();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(
     page.getByRole("combobox", { name: "Category", exact: true }),
   ).toHaveValue(categoryName);
-  await expect(page.getByRole("status")).toContainText("already exists");
   dialog = await openReference(page, "Department", "Add department");
   await dialog
     .getByLabel("Department name")
@@ -1680,14 +1871,11 @@ test("Add Software creates and selects references without losing the draft or by
     animations: "disabled",
     caret: "initial",
   });
-  await page
-    .locator(".form-section")
-    .first()
-    .screenshot({
-      path: ".artifacts/software-basic-information-desktop.png",
-      animations: "disabled",
-      caret: "initial",
-    });
+  await page.locator(".form-section").first().screenshot({
+    path: ".artifacts/software-basic-information-desktop.png",
+    animations: "disabled",
+    caret: "initial",
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(
@@ -1700,14 +1888,11 @@ test("Add Software creates and selects references without losing the draft or by
     animations: "disabled",
     caret: "initial",
   });
-  await page
-    .locator(".form-section")
-    .first()
-    .screenshot({
-      path: ".artifacts/software-basic-information-mobile.png",
-      animations: "disabled",
-      caret: "initial",
-    });
+  await page.locator(".form-section").first().screenshot({
+    path: ".artifacts/software-basic-information-mobile.png",
+    animations: "disabled",
+    caret: "initial",
+  });
   await page.setViewportSize({ width: 1280, height: 720 });
   await page
     .getByRole("button", { name: "Save software", exact: true })
@@ -1866,6 +2051,21 @@ test("inline employee invitation uses the existing password setup flow and never
     team_id: team,
     status: "pending",
   });
+  await dialog
+    .getByLabel("Employee name", { exact: true })
+    .fill("Inline invited employee");
+  await dialog.getByLabel("Employee work email").fill(email);
+  await dialog
+    .getByRole("button", { name: "Send invitation", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "already has an invitation in the list",
+  );
+  await expect(dialog.getByLabel("Employee work email")).toHaveValue(email);
+  expect(
+    (await admin.from("employee_invitations").select("id").eq("email", email))
+      .data,
+  ).toHaveLength(1);
   await dialog
     .getByRole("button", { name: "Back to software", exact: true })
     .click();

@@ -202,7 +202,7 @@ export function SoftwareForm({
       });
       clearErrors(field);
       setReferenceNotice(
-        `${reference.name} ${outcome.reused ? "already exists and is selected" : "is saved and selected"}. Save software when your draft is ready.`,
+        `${reference.name} is saved and selected. Save software when your draft is ready.`,
       );
     }
   };
@@ -283,7 +283,7 @@ export function SoftwareForm({
               .join(" ") || undefined
           }
         >
-          {options.map(([value, text]) => (
+          {options.slice(0, 1).map(([value, text]) => (
             <option key={value} value={value}>
               {text}
             </option>
@@ -305,6 +305,11 @@ export function SoftwareForm({
                 : ""}
             </option>
           )}
+          {options.slice(1).map(([value, text]) => (
+            <option key={value} value={value}>
+              {text}
+            </option>
+          ))}
         </select>
         {errors[name] && (
           <span id={`${formId}-${name}-error`} className="field-error">
@@ -377,7 +382,10 @@ export function SoftwareForm({
             {select(
               "category",
               "Category",
-              categoryOptions.map((c) => [c, c]),
+              [
+                ["", "Select a category"],
+                ...categoryOptions.map((c) => [c, c] as [string, string]),
+              ],
               true,
               "category",
             )}
@@ -574,6 +582,19 @@ export function SoftwareForm({
           key={dialog}
           kind={dialog}
           team={teamOptions.find((t) => t.id === team)}
+          existingNames={
+            dialog === "vendor"
+              ? vendorOptions.map((v) => v.name)
+              : dialog === "category"
+                ? categoryOptions
+                : dialog === "department"
+                  ? teamOptions.map((t) => t.name)
+                  : dialog === "payment"
+                    ? paymentOptions
+                        .filter((p) => p.team_id === team)
+                        .map((p) => p.nickname)
+                    : []
+          }
           candidates={employeeCandidates.filter(
             (p) =>
               !memberOptions.some(

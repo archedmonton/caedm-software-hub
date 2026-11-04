@@ -1,8 +1,17 @@
 "use client";
-import { useActionState, useEffect, useState, useTransition } from "react";
+import {
+  useActionState,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+  type ChangeEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import { MailPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SubmissionError } from "@/components/hub/submission-error";
 import {
   inviteEmployee,
   manageInvitation,
@@ -21,20 +30,52 @@ export function InviteEmployeeForm({
   staffOnly?: boolean;
   onPendingChange?: (pending: boolean) => void;
 }) {
+  const id = useId();
+  const emailInput = useRef<HTMLInputElement>(null);
+  const [edited, setEdited] = useState(false);
+  const defaults = {
+    full_name: "",
+    email: "",
+    team_id: defaultTeamId,
+    role: "staff",
+    can_manage: "false",
+  };
+  const [values, setValues] = useState(defaults);
+  const changeField = (
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+  ) => {
+    const { name, value } = event.target;
+    setEdited(true);
+    setValues((previous) => ({ ...previous, [name]: value }));
+  };
   const [state, action, pending] = useActionState<InvitationState, FormData>(
-    inviteEmployee,
+    async (previous, form) => {
+      const outcome = await inviteEmployee(previous, form);
+      if (outcome.success) setValues(defaults);
+      return outcome;
+    },
     {},
   );
   useEffect(() => {
     onPendingChange?.(pending);
   }, [pending, onPendingChange]);
+  useEffect(() => {
+    if (state.field === "email" && !pending) emailInput.current?.focus();
+  }, [state, pending]);
+  const showError = !pending && !edited && Boolean(state.error);
   return (
-    <form action={action} className="invitation-form">
+    <form
+      action={action}
+      className="invitation-form"
+      onSubmit={() => setEdited(false)}
+    >
       <div className="form-grid">
         <label>
           Employee name
           <input
             name="full_name"
+            value={values.full_name}
+            onChange={changeField}
             required
             maxLength={150}
             autoComplete="name"
@@ -44,6 +85,13 @@ export function InviteEmployeeForm({
           Employee work email
           <input
             name="email"
+            value={values.email}
+            onChange={changeField}
+            ref={emailInput}
+            aria-invalid={showError && state.field === "email"}
+            aria-describedby={
+              showError && state.field === "email" ? id + "-error" : undefined
+            }
             type="email"
             required
             maxLength={254}
@@ -55,7 +103,12 @@ export function InviteEmployeeForm({
       <div className="form-grid">
         <label>
           Invitation department
-          <select name="team_id" required defaultValue={defaultTeamId}>
+          <select
+            name="team_id"
+            required
+            value={values.team_id}
+            onChange={changeField}
+          >
             <option value="" disabled>
               Select a department
             </option>
@@ -69,7 +122,7 @@ export function InviteEmployeeForm({
         {!staffOnly && (
           <label>
             Invitation role
-            <select name="role" defaultValue="staff">
+            <select name="role" value={values.role} onChange={changeField}>
               <option value="staff">Staff</option>
               <option value="finance">Finance</option>
               <option value="admin">Administrator</option>
@@ -80,7 +133,11 @@ export function InviteEmployeeForm({
       {staffOnly && <input type="hidden" name="role" value="staff" />}
       <label>
         Department software permissions
-        <select name="can_manage" defaultValue="false">
+        <select
+          name="can_manage"
+          value={values.can_manage}
+          onChange={changeField}
+        >
           <option value="false">View department software</option>
           <option value="true">View and manage department software</option>
         </select>
@@ -101,10 +158,8 @@ export function InviteEmployeeForm({
           Create a department before sending an invitation.
         </p>
       )}
-      {state.error && (
-        <p className="notice error" role="alert">
-          {state.error}
-        </p>
+      {showError && (
+        <SubmissionError id={id + "-error"} message={state.error!} />
       )}
       {state.success && (
         <p className="notice" role="status">
