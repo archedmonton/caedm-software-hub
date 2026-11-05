@@ -2,32 +2,32 @@ import Link from "next/link";
 import {
   Plus,
   ArrowUpRight,
-  Layers3,
-  Wallet,
-  TrendingUp,
+  ArrowRight,
   CalendarDays,
   CircleAlert,
+  CheckCircle2,
   ClipboardCheck,
-  ArrowRight,
+  Layers3,
 } from "lucide-react";
 import { addDays, format, parseISO } from "date-fns";
 import { requireAccess } from "@/lib/auth";
 import { allRows, reviews, subscriptions } from "@/lib/data";
 import {
   currencyTotals,
-  decisionDeadline,
   dueIn,
   equivalents,
-  money,
+  financeRole,
   projectedEvents,
   today,
 } from "@/lib/domain";
-import { PageHeading, Empty, Status, Totals } from "@/components/hub/common";
+import { dashboardAttention } from "@/lib/dashboard";
+import { PageHeading, Empty, Totals } from "@/components/hub/common";
 import { SpendingCharts } from "@/components/hub/charts";
 import { Button } from "@/components/ui/button";
+
 export default async function Dashboard() {
   const { db, profile } = await requireAccess();
-  const [software, reviewRows, activity] = await Promise.all([
+  const [software, reviewRows, activity, managed] = await Promise.all([
     subscriptions(db),
     reviews(db),
     allRows<{
@@ -35,9 +35,18 @@ export default async function Dashboard() {
       entity: string;
       action: string;
       created_at: string;
-      after_data: Record<string, string>;
+      after_data: Record<string, string> | null;
     }>(db, "audit_logs"),
+    profile.role === "staff"
+      ? db
+          .from("team_members")
+          .select("team_id")
+          .eq("profile_id", profile.id)
+          .eq("can_manage", true)
+          .limit(1)
+      : Promise.resolve({ data: [] }),
   ]);
+  const canAdd = financeRole(profile.role) || Boolean(managed.data?.length);
   const now = today();
   const end = format(addDays(parseISO(now), 30), "yyyy-MM-dd");
   const active = software.filter(
@@ -47,314 +56,338 @@ export default async function Dashboard() {
   );
   const events = software
     .flatMap((s) => projectedEvents(s, now, end))
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const unanswered = reviewRows.filter((r) => !r.response);
-  const needs = software.filter(
-    (s) =>
-      ["active", "trial", "pending_cancellation"].includes(s.status) &&
-      decisionDeadline(s) &&
-      dueIn(decisionDeadline(s)!, now) <= 30,
+    .sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        a.subscription.name.localeCompare(b.subscription.name),
+    );
+  const attention = dashboardAttention(software, reviewRows, profile.id, now);
+  const ownReviews = reviewRows.filter(
+    (r) =>
+      !r.response &&
+      r.owner_id === profile.id &&
+      software.some(
+        (s) =>
+          s.id === r.subscription_id &&
+          !["archived", "cancelled"].includes(s.status),
+      ),
   );
-  const expiring = software.filter(
-    (s) =>
-      s.license_expiry_date &&
-      dueIn(s.license_expiry_date, now) <= 30 &&
-      !["archived", "cancelled"].includes(s.status),
-  );
-  const attention = new Set([
-    ...needs.map((s) => s.id),
-    ...expiring.map((s) => s.id),
-    ...unanswered.map((r) => r.subscription_id),
-    ...software.filter((s) => s.status === "expired").map((s) => s.id),
-  ]);
-  const kpis = [
-    {
-      label: "Active subscriptions",
-      value: active.length,
-      detail: "Active and trial subscriptions",
-      Icon: Layers3,
-    },
-    {
-      label: "Monthly recurring",
-      value: (
-        <Totals
-          totals={currencyTotals(
-            active,
-            (s) => equivalents(s).monthly,
-            (s) => s.currency,
-          )}
-        />
-      ),
-      detail: "Normalized monthly commitment",
-      Icon: Wallet,
-    },
-    {
-      label: "Annual recurring",
-      value: (
-        <Totals
-          totals={currencyTotals(
-            active,
-            (s) => equivalents(s).annual,
-            (s) => s.currency,
-          )}
-        />
-      ),
-      detail: "Normalized annual commitment",
-      Icon: TrendingUp,
-    },
-    {
-      label: "Payments in 30 days",
-      value: (
-        <Totals
-          totals={currencyTotals(
-            events,
-            (e) => e.amount,
-            (e) => e.currency,
-          )}
-        />
-      ),
-      detail: `${events.length} projected billing events`,
-      Icon: CalendarDays,
-    },
-    {
-      label: "Requires attention",
-      value: attention.size,
-      detail: "Reviews, deadlines and expired records",
-      Icon: CircleAlert,
-    },
-    {
-      label: "Pending usage reviews",
-      value: unanswered.length,
-      detail: "Awaiting an owner's confirmation",
-      Icon: ClipboardCheck,
-    },
-  ];
+  const overdue = attention.filter((item) =>
+    item.issues.some((i) => i.overdue),
+  ).length;
   const recent = activity
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, 5);
   return (
-    <>
+    <div className="dashboard-page readable-workspace">
       <PageHeading
-        eyebrow="YOUR WORKSPACE AT A GLANCE"
+        eyebrow="YOUR WORKSPACE"
         title={`Good to see you, ${profile.full_name.split(" ")[0]}.`}
-        description="A clearer picture of your software commitments and what comes next."
+        description="Start with what needs a decision. Then see what is coming up."
       >
-        <span className="date-chip">
-          <CalendarDays size={15} />
-          {format(parseISO(now), "MMMM d, yyyy")}
-        </span>
-        <Button asChild>
-          <Link href="/software/new">
-            <Plus />
-            Add software
-          </Link>
-        </Button>
+        {canAdd && (
+          <Button asChild>
+            <Link href="/software/new">
+              <Plus aria-hidden="true" />
+              Add software
+            </Link>
+          </Button>
+        )}
       </PageHeading>
-      <div className="scope-note">
-        <span className="live-dot" />
-        Live workspace data <span>·</span>{" "}
-        {profile.role === "staff"
-          ? "Your departments"
-          : "Organization overview"}
-        <span className="ml-auto hidden sm:block">
-          CAD primary · Currencies kept separate
+      <div className="dashboard-context">
+        <span>
+          {profile.role === "staff"
+            ? "Your departments"
+            : "Organization overview"}
         </span>
+        <time dateTime={now}>
+          {format(parseISO(now), "EEEE, MMMM d, yyyy")}
+        </time>
       </div>
-      <div className="kpi-grid">
-        {kpis.map(({ label, value, detail, Icon }) => (
-          <section className="panel kpi" key={label}>
-            <div className="kpi-label">
-              {label}
-              <span className="kpi-icon">
-                <Icon size={17} />
+      <div className="dashboard-priority-grid">
+        <section
+          className="panel dashboard-priority"
+          aria-labelledby="attention-heading"
+        >
+          <div className="priority-header">
+            <div>
+              <span className="section-kicker">START HERE</span>
+              <h2 id="attention-heading">Needs your attention</h2>
+              <p>Overdue items first. Each software appears once.</p>
+            </div>
+            <div className="priority-total">
+              <strong>{attention.length}</strong>
+              <span>
+                {attention.length === 1
+                  ? "record to check"
+                  : "records to check"}
               </span>
             </div>
-            <div className="kpi-value">{value}</div>
-            <p>{detail}</p>
-          </section>
-        ))}
-      </div>
-      <SpendingCharts software={software} />
-      <div className="dashboard-lower">
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Coming up next</h2>
-              <p>Projected renewals over the next 30 days</p>
-            </div>
-            <Link className="subtle-link" href="/renewals">
-              View all <ArrowUpRight size={15} />
-            </Link>
           </div>
-          {events.length ? (
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Software</th>
-                    <th>Payment</th>
-                    <th>Renewal</th>
-                    <th>Owner</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.slice(0, 6).map((e) => (
-                    <tr key={`${e.subscription.id}-${e.date}`}>
-                      <td>
-                        <Link
-                          className="record-link"
-                          href={`/software/${e.subscription.id}`}
+          {attention.length ? (
+            <>
+              <div className="priority-summary">
+                <span
+                  className={
+                    overdue ? "urgency-label overdue" : "urgency-label"
+                  }
+                >
+                  {overdue
+                    ? `${overdue} overdue or expired`
+                    : "No overdue items"}
+                </span>
+                <span>
+                  {ownReviews.length}{" "}
+                  {ownReviews.length === 1
+                    ? "review assigned to you"
+                    : "reviews assigned to you"}
+                </span>
+              </div>
+              <ol className="priority-list">
+                {attention.slice(0, 4).map((item) => {
+                  const issue = item.issues[0];
+                  const action = item.issues.find((i) => i.mine) ?? issue;
+                  const days = issue.date ? dueIn(issue.date, now) : null;
+                  return (
+                    <li key={item.id}>
+                      <Link
+                        href={action.href}
+                        aria-label={`${action.action}: ${item.name}`}
+                      >
+                        <span
+                          className={`priority-symbol ${issue.overdue ? "is-overdue" : ""}`}
                         >
-                          {e.subscription.name}
-                        </Link>
-                        <small>{e.subscription.vendors?.name}</small>
-                      </td>
-                      <td>
-                        <strong>
-                          {money(e.amount, e.currency)}{" "}
-                          <small className="inline">{e.currency}</small>
-                        </strong>
-                        <small>
-                          {e.subscription.payment_methods?.nickname ||
-                            "No payment reference"}
-                        </small>
-                      </td>
-                      <td>
-                        {format(parseISO(e.date), "MMM d, yyyy")}
-                        <small>In {dueIn(e.date, now)} days</small>
-                      </td>
-                      <td>
-                        {e.subscription.profiles?.full_name || "Unassigned"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                          {issue.kind === "review" ? (
+                            <ClipboardCheck aria-hidden="true" />
+                          ) : (
+                            <CircleAlert aria-hidden="true" />
+                          )}
+                        </span>
+                        <div className="priority-item-copy">
+                          <div className="priority-item-top">
+                            <strong>{item.name}</strong>
+                            <span
+                              className={`urgency-label ${issue.overdue ? "overdue" : ""}`}
+                            >
+                              {issue.kind === "expired"
+                                ? "Expired"
+                                : issue.overdue
+                                  ? "Overdue"
+                                  : days === 0
+                                    ? "Due today"
+                                    : days !== null
+                                      ? `In ${days} days`
+                                      : "Check record"}
+                            </span>
+                          </div>
+                          <p>
+                            {issue.label}
+                            {issue.date && (
+                              <>
+                                {" "}
+                                ·{" "}
+                                <time dateTime={issue.date}>
+                                  {format(parseISO(issue.date), "MMM d, yyyy")}
+                                </time>
+                              </>
+                            )}
+                          </p>
+                          <span className="priority-item-detail">
+                            {item.department}
+                            {item.issues.length > 1 &&
+                              ` · Also: ${item.issues
+                                .slice(1)
+                                .map((i) => i.label.toLowerCase())
+                                .join(", ")}`}
+                          </span>
+                          <span className="priority-item-action">
+                            {action.action}
+                            <ArrowRight size={17} aria-hidden="true" />
+                          </span>
+                        </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ol>
+            </>
           ) : (
-            <Empty
-              title="A clear horizon"
-              text="No projected subscription payments are due in the next 30 days."
-            />
-          )}
-          <div className="panel-footnote">
-            Projections are commitments, not recorded accounting expenses.
-          </div>
-        </section>
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Requires attention</h2>
-              <p>A few things to keep on your radar</p>
+            <div className="priority-clear">
+              <CheckCircle2 size={40} aria-hidden="true" />
+              <h3>You are up to date</h3>
+              <p>
+                No outstanding reviews, approaching decision deadlines or
+                expiring licenses in the next 30 days.
+              </p>
+              <Link className="dashboard-text-link" href="/software">
+                Browse software <ArrowRight size={18} aria-hidden="true" />
+              </Link>
             </div>
-            <span className="count-chip">{attention.size}</span>
-          </div>
-          <div className="attention-list">
-            {unanswered.slice(0, 3).map((r) => (
-              <Link key={r.id} href={`/reviews/${r.id}`}>
-                <span className="attention-icon">
-                  <ClipboardCheck size={17} />
-                </span>
-                <div>
-                  <strong>
-                    {r.software_subscriptions?.name || "Software review"}
-                  </strong>
-                  <p>
-                    {dueIn(r.deadline, now) < 0
-                      ? "Decision overdue"
-                      : "Usage confirmation needed"}
-                  </p>
-                </div>
-                <ArrowRight size={16} />
-              </Link>
-            ))}
-            {needs.slice(0, 3).map((s) => (
-              <Link key={s.id} href={`/software/${s.id}`}>
-                <span className="attention-icon amber">
-                  <CalendarDays size={17} />
-                </span>
-                <div>
-                  <strong>{s.name}</strong>
-                  <p>Decision deadline {decisionDeadline(s)}</p>
-                </div>
-                <ArrowRight size={16} />
-              </Link>
-            ))}
-            {expiring.slice(0, 2).map((s) => (
-              <Link key={`expiry-${s.id}`} href={`/software/${s.id}`}>
-                <span className="attention-icon amber">
-                  <CircleAlert size={17} />
-                </span>
-                <div>
-                  <strong>{s.name}</strong>
-                  <p>License expiry {s.license_expiry_date}</p>
-                </div>
-                <ArrowRight size={16} />
-              </Link>
-            ))}
-            {!unanswered.length && !needs.length && !expiring.length && (
-              <Empty
-                title="You're all caught up"
-                text="Usage requests and upcoming deadlines will appear here."
-              />
+          )}
+          <div className="priority-footer">
+            <Link href="/reviews">
+              Open Usage Reviews <ArrowUpRight size={17} aria-hidden="true" />
+            </Link>
+            <Link href="/renewals">
+              View renewal deadlines{" "}
+              <ArrowUpRight size={17} aria-hidden="true" />
+            </Link>
+            {attention.length > 4 && (
+              <span>
+                Showing the first 4 of {attention.length} software records.
+              </span>
             )}
           </div>
         </section>
+        <section
+          className="panel dashboard-payments"
+          aria-labelledby="payments-heading"
+        >
+          <div className="payments-header">
+            <span className="section-kicker">
+              <CalendarDays size={18} aria-hidden="true" />
+              LOOKING AHEAD
+            </span>
+            <h2 id="payments-heading">Payments in the next 30 days</h2>
+            <div className="payments-total">
+              <Totals
+                totals={currencyTotals(
+                  events,
+                  (e) => e.amount,
+                  (e) => e.currency,
+                )}
+              />
+            </div>
+            <p>
+              {events.length} projected{" "}
+              {events.length === 1 ? "payment" : "payments"} · currencies kept
+              separate
+            </p>
+          </div>
+          <div className="next-payment-list">
+            {events.slice(0, 3).map((e) => (
+              <Link
+                key={`${e.subscription.id}-${e.date}`}
+                href={`/software/${e.subscription.id}`}
+              >
+                <span className="payment-date">
+                  <strong>{format(parseISO(e.date), "dd")}</strong>
+                  <span>{format(parseISO(e.date), "MMM")}</span>
+                </span>
+                <div>
+                  <strong>{e.subscription.name}</strong>
+                  <span>
+                    {e.subscription.profiles?.full_name || "Owner unassigned"}
+                  </span>
+                </div>
+                <span className="payment-amount">
+                  <Totals totals={{ [e.currency]: e.amount }} />
+                </span>
+              </Link>
+            ))}
+            {!events.length && <p>No projected payments in this period.</p>}
+          </div>
+          <div className="payments-footer">
+            <Link className="dashboard-text-link" href="/renewals">
+              See all upcoming payments{" "}
+              <ArrowRight size={18} aria-hidden="true" />
+            </Link>
+            <p>
+              Expected charges, not recorded expenses. Check vendor notice
+              periods before cancelling.
+            </p>
+          </div>
+        </section>
       </div>
-      <section className="panel mt-6">
-        <div className="panel-heading">
+      <section
+        className="dashboard-overview"
+        aria-labelledby="overview-heading"
+      >
+        <div className="dashboard-section-heading">
           <div>
-            <h2>Recent activity</h2>
-            <p>Changes that keep your records current</p>
+            <h2 id="overview-heading">Your software overview</h2>
+            <p>Recurring commitments across the software you can access.</p>
+          </div>
+          <Link className="dashboard-text-link" href="/software">
+            Software inventory <ArrowUpRight size={17} aria-hidden="true" />
+          </Link>
+        </div>
+        <div className="dashboard-metrics">
+          <div>
+            <span>
+              <Layers3 size={18} aria-hidden="true" />
+              Active subscriptions
+            </span>
+            <strong className="metric-number">{active.length}</strong>
+            <p>Active and trial subscriptions</p>
+          </div>
+          <div>
+            <span>Monthly recurring</span>
+            <Totals
+              totals={currencyTotals(
+                active,
+                (s) => equivalents(s).monthly,
+                (s) => s.currency,
+              )}
+            />
+            <p>Monthly equivalent, not an invoice</p>
+          </div>
+          <div>
+            <span>Annual recurring</span>
+            <Totals
+              totals={currencyTotals(
+                active,
+                (s) => equivalents(s).annual,
+                (s) => s.currency,
+              )}
+            />
+            <p>Annual equivalent, not recorded expenses</p>
           </div>
         </div>
-        <div className="activity-list">
-          {recent.length
-            ? recent.map((a) => (
-                <div key={a.id}>
-                  <span className="activity-dot" />
-                  <div>
-                    <strong>
-                      {a.after_data?.name ||
-                        a.after_data?.full_name ||
-                        a.entity.replaceAll("_", " ")}
-                    </strong>
-                    <span>
-                      {a.action === "INSERT" ? "added" : "updated"} ·{" "}
-                      {a.entity.replaceAll("_", " ")}
-                    </span>
-                  </div>
-                  <time>
-                    {new Intl.DateTimeFormat("en-CA", {
-                      timeZone: "America/Edmonton",
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }).format(new Date(a.created_at))}
-                  </time>
-                </div>
-              ))
-            : software.slice(0, 4).map((s) => (
-                <div key={s.id}>
-                  <span className="activity-dot" />
-                  <div>
-                    <Link href={`/software/${s.id}`}>{s.name}</Link>
-                    <span>Software added</span>
-                  </div>
-                  <Status value={s.status} />
-                </div>
-              ))}
-          {!software.length && (
+      </section>
+      <SpendingCharts software={software} />
+      <details className="panel dashboard-history">
+        <summary>
+          <span>Recent activity</span>
+          <span>Latest changes to your records</span>
+        </summary>
+        <div className="dashboard-history-list">
+          {recent.map((a) => (
+            <div key={a.id}>
+              <div>
+                <strong>
+                  {a.after_data?.name ||
+                    a.after_data?.full_name ||
+                    a.entity.replaceAll("_", " ")}
+                </strong>
+                <p>
+                  {a.action === "INSERT"
+                    ? "Added"
+                    : a.action === "DELETE"
+                      ? "Removed"
+                      : "Updated"}{" "}
+                  · {a.entity.replaceAll("_", " ")}
+                </p>
+              </div>
+              <time dateTime={a.created_at}>
+                {new Intl.DateTimeFormat("en-CA", {
+                  timeZone: "America/Edmonton",
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }).format(new Date(a.created_at))}
+              </time>
+            </div>
+          ))}
+          {!recent.length && (
             <Empty
-              title="Your workspace starts here"
-              text="Add your first software record to begin building a reliable register."
-              href="/software/new"
-              action="Add software"
+              title="No recent activity"
+              text="Changes to the records you can access will appear here."
             />
           )}
         </div>
-      </section>
-    </>
+      </details>
+    </div>
   );
 }

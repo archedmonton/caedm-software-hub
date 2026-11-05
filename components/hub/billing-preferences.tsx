@@ -118,32 +118,33 @@ export function BillingPreferences({
         className="notification-options"
       >
         <div className="notification-scope">
-          <label className="billing-preference-toggle">
-            <input
-              type="checkbox"
-              checked={values.only_owned}
-              onChange={(e) => {
-                setValues({ ...values, only_owned: e.target.checked });
-                setResult({});
-              }}
-              disabled={pending}
+          <div className="editor-field-label">
+            <label className="billing-preference-toggle">
+              <input
+                type="checkbox"
+                checked={values.only_owned}
+                onChange={(e) => {
+                  setValues({ ...values, only_owned: e.target.checked });
+                  setResult({});
+                }}
+                disabled={pending}
+              />
+              Only software I own
+            </label>
+            <FieldHelp
+              id={id + "-scope-help"}
+              title="Notification scope"
+              text="Checked means software assigned to you. Unchecked includes all software available through your existing role and departments. Review requests still go only to the assigned reviewer, and Finance updates still require the appropriate role. These choices do not grant new access."
             />
-            Only software I own
-          </label>
+          </div>
           <p className="field-hint">
-            Checked: include only software assigned to you. Unchecked: include
-            all software you are authorized to view. Review requests still go to
-            their assigned reviewer; Finance updates still require the
-            appropriate role.
+            Checked: software assigned to you. Unchecked: all software you are
+            already authorized to view.
           </p>
         </div>
         <div className="editor-field-label mb-3">
           <h3>Billing notice timing</h3>
-          <FieldHelp
-            id={id + "-scope-help"}
-            title="Notification scope"
-            text="Ownership and email enablement are separate controls. All software means only records available through your role and departments. These settings never grant new access or make you responsible for someone else's review. Turn off the switch to stop all software reminder emails, then save. Account security and invitation emails continue."
-          />
+          <span className="field-hint">Defaults: 14 and 7 days</span>
         </div>
         <div className="form-grid">
           {(
@@ -184,11 +185,9 @@ export function BillingPreferences({
         </div>
       </fieldset>
       <p className="field-hint">
-        Billing notices default to 14 and 7 days before billing. Changes apply
-        when you save. Turning notifications off preserves your scope and
-        timings. Review assignments and in-app work items remain available;
-        invitations, verification and password resets continue. Missed billing
-        runs send only the latest due notice, before the billing date.
+        Save to apply your changes. Switching off stops software reminder emails
+        and keeps your timings. Reviews in the Hub and account security emails
+        continue.
       </p>
       {result.error && (
         <SubmissionError id={id + "-error"} message={result.error} />

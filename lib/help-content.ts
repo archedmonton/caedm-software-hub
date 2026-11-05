@@ -262,10 +262,13 @@ export const helpArticles: HelpArticle[] = [
     summary:
       "The dashboard summarizes the software and departments your role can access.",
     steps: [
+      "Start with Needs your attention at the top. It groups each software into one row, keeps all of its reasons together, and sorts overdue items before upcoming dates. Expired records are also included. Up to four records are shown; use Usage Reviews, renewal deadlines or Software Inventory to see more.",
+      "Answer review opens a review assigned to you. View review opens someone else's review for visibility only. Your existing role and department permissions still apply, and only the assigned reviewer can answer.",
+      "Payments in the next 30 days shows expected charges by currency and links each upcoming payment to its software record. These amounts are forecasts, not recorded payments.",
       "Monthly and annual equivalents estimate recurring spending; they are not recorded invoices or expenses.",
       "Each currency is reported separately. The application does not convert currencies.",
       "Watch decision deadlines and license expiry alongside renewal dates. A cancellation notice deadline can occur before the next payment.",
-      "Use the chart currency selector and View spending data for a tabular alternative. Dates and times use America/Edmonton where shown.",
+      "Spending analysis sits below the action area. Use the chart currency selector and View spending data for a tabular alternative. Open Recent activity for the latest changes. Dates and times use America/Edmonton where shown.",
     ],
   },
   {
@@ -442,12 +445,12 @@ export const helpArticles: HelpArticle[] = [
     access: "admin",
     title: "How do I manage reminders and shared references?",
     summary:
-      "Settings contains organization preferences, reminder rules and shared reference data.",
+      "Settings starts with personal Notifications and account details. Shared organization rules and email delivery tools are kept in separate expandable sections.",
     steps: [
-      "Review organization settings, reporting currencies, initial review notice and follow-up notice. The organization timezone is America/Edmonton.",
-      "The production scheduler runs daily at 15:00 UTC and evaluates dates in America/Edmonton. Run reminders now prepares due billing notices and reviews, then attempts queued deliveries. It does not force future notices. Check notification activity for delivery failures; use only one scheduler where possible.",
+      "Under Workspace administration, open Workspace settings to edit the organization name, reporting currencies and Usage Review timings. Save workspace settings applies these shared rules. The organization timezone is America/Edmonton.",
+      "Open Email delivery & activity to see the automatic daily schedule, Run reminders now and recent notification history. The scheduler runs at 15:00 UTC and uses Edmonton dates. A manual run processes eligible messages without forcing future notices. Open a history entry for delivery details.",
       "Every verified active employee can use Settings → Notifications. The switch controls all software reminder emails, including Usage Review requests, follow-ups and Finance updates. Each employee chooses their own scope and billing timings; review assignments and in-app work remain unchanged.",
-      "Keep vendors and payment references current. Store only limited card references, such as the last four digits; never enter full card numbers, CVVs or vendor passwords.",
+      "Create vendors, categories and payment references in the Add or Edit software dropdowns. Settings no longer repeats those creation forms. Store limited payment references only; never full card numbers, CVVs or vendor passwords.",
       "Email delivery and scheduled reminder operation require administrator setup. Contact the person responsible for hosting or email if failures continue.",
     ],
   },
@@ -477,7 +480,7 @@ export const helpArticles: HelpArticle[] = [
     summary:
       "Settings shows your profile, role, account status and organization timezone.",
     steps: [
-      "Open Settings to check your current access information.",
+      "Open Settings. Notifications is your main personal control; Your account shows your verified email, role, status and organization timezone alongside it, or below it on a narrow screen. Administrators can expand Workspace settings and Email delivery & activity for shared controls.",
       "Use the account menu in the top bar, or the sign-out icon beside your name in the sidebar, to sign out.",
       "Ask your workspace administrator to update your role or department. Use Forgot password on the sign-in screen if you need to reset your password.",
     ],
@@ -514,7 +517,7 @@ export const helpArticles: HelpArticle[] = [
     summary: "Shared references keep software and expense records consistent.",
     steps: [
       "On Add or Edit software, open Vendor or Category and choose its Add option. Save in the modal to select the reference without losing the software draft. Vendor creation has moved out of Settings.",
-      "Choose a department, then open Payment reference and select Add payment reference. The modal locks the reference to that department; use a recognizable nickname and optional card brand and last four digits. Payment references can also be maintained in Settings.",
+      "Choose a department, then open Payment reference and select Add payment reference. The modal locks the reference to that department; use a recognizable nickname and optional card brand and last four digits. This is the home for creating payment references; Settings links you back to Software Inventory.",
       "Use a recognizable nickname and the appropriate department. Record only permitted details such as card brand and last four digits; never store a full card number, CVV or vendor password.",
       "Choose these references on the software form. Recorded expenses keep a snapshot of their references so later edits do not rewrite financial history.",
     ],

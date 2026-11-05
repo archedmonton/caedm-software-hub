@@ -13,6 +13,12 @@ async function openReference(page: Page, field: string, title: string) {
   await expect(dialog).toBeVisible();
   return dialog;
 }
+async function openDeliveryTools(page: Page) {
+  const delivery = page.locator("#email-delivery");
+  if (!(await delivery.evaluate((el) => (el as HTMLDetailsElement).open)))
+    await delivery.locator(":scope > summary").click();
+}
+
 test.describe.configure({ mode: "serial" });
 const raw = execFileSync(
   process.execPath,
@@ -91,6 +97,19 @@ test.beforeAll(async () => {
       .from("team_members")
       .upsert({ team_id: team, profile_id: ids.staff, can_manage: true })
       .select(),
+  );
+  // Keep previous local test administrators from becoming hundreds of Finance
+  // recipients. Preserve their identities/history and retain this run's active
+  // administrators; never relax the real write limiter or touch non-test users.
+  await checked(
+    await admin
+      .from("profiles")
+      .update({ status: "deactivated" })
+      .or(
+        "email.like.e2e-admin-%@caedm.ca,email.like.e2e-finance-%@caedm.ca,email.like.e2e-super-admin-%@caedm.ca",
+      )
+      .in("role", ["admin", "finance", "super_admin"])
+      .not("id", "in", `(${Object.values(ids).join(",")})`),
   );
 });
 test("public routes are responsive and restricted endpoints reject anonymous access", async ({
@@ -278,6 +297,7 @@ test("local reminders create authenticated reviews and the owner can respond", a
   await expect
     .poll(
       async () => {
+        await openDeliveryTools(page);
         await page.getByRole("button", { name: "Run reminders now" }).click();
         await page
           .getByRole("button", { name: "Confirm", exact: true })
@@ -2330,6 +2350,7 @@ test("14-day and 7-day billing reminders deliver branded email exactly once thro
   await login(page, "admin");
   await page.goto("/settings");
   const run = async () => {
+    await openDeliveryTools(page);
     await page
       .getByRole("button", { name: "Run reminders now", exact: true })
       .click();
@@ -2431,6 +2452,7 @@ test("Finance wider scope delivers authorized software emails and the master swi
   };
   const run = async () => {
     await page.goto("/settings");
+    await openDeliveryTools(page);
     await page
       .getByRole("button", { name: "Run reminders now", exact: true })
       .click();
@@ -2578,4 +2600,260 @@ test("Finance Centre Beta labels and Usage Review field help remain accessible o
   } finally {
     await mobile.close();
   }
+});
+
+test("dashboard prioritizes action and Settings separates personal preferences from administration", async ({
+  page,
+  browser,
+}) => {
+  const businessDay = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Edmonton",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const day = (offset: number) => {
+    const d = new Date(businessDay + "T12:00:00Z");
+    d.setUTCDate(d.getUTCDate() + offset);
+    return d.toISOString().slice(0, 10);
+  };
+  const address = `e2e-design-${suffix}@caedm.ca`;
+  const created = await checked(
+    await admin.auth.admin.createUser({
+      email: address,
+      password: secret,
+      email_confirm: true,
+      user_metadata: { full_name: "Alex Morgan" },
+    }),
+  );
+  const reader = created.user!.id;
+  await checked(
+    await admin.from("profiles").update({ status: "active" }).eq("id", reader),
+  );
+  const department = await checked(
+    await admin
+      .from("teams")
+      .insert({ name: `MVP review ${suffix}` })
+      .select("id")
+      .single(),
+  );
+  await checked(
+    await admin.from("team_members").insert({
+      team_id: department!.id,
+      profile_id: reader,
+      can_manage: false,
+    }),
+  );
+  const common = {
+    vendor_id: "20000000-0000-4000-8000-000000000001",
+    team_id: department!.id,
+    owner_id: reader,
+    category: "Productivity",
+    purchase_date: businessDay,
+    purchase_type: "subscription",
+    amount: 169,
+    status: "active",
+    currency: "CAD",
+    billing_cycle: "monthly",
+    billing_start_date: day(14),
+    next_billing_date: day(14),
+    cancellation_notice_days: 21,
+  };
+  const records = await checked(
+    await admin
+      .from("software_subscriptions")
+      .insert([
+        { ...common, name: "Microsoft 365" },
+        {
+          ...common,
+          name: "Adobe Acrobat",
+          amount: 30,
+          next_billing_date: day(40),
+          billing_start_date: day(40),
+          cancellation_notice_days: 0,
+          license_expiry_date: day(5),
+        },
+        {
+          ...common,
+          name: "Zoom Workplace",
+          amount: 24.99,
+          currency: "USD",
+          next_billing_date: day(7),
+          billing_start_date: day(7),
+          cancellation_notice_days: 0,
+        },
+        {
+          ...common,
+          name: "Legacy design tool",
+          status: "expired",
+          next_billing_date: day(14),
+        },
+      ])
+      .select("id,name"),
+  );
+  const microsoft = records!.find((r) => r.name === "Microsoft 365")!;
+  const review = await checked(
+    await admin
+      .from("usage_reviews")
+      .insert({
+        subscription_id: microsoft.id,
+        owner_id: reader,
+        renewal_date: day(14),
+        deadline: day(-7),
+      })
+      .select("id")
+      .single(),
+  );
+  await page.goto("/login");
+  await page.getByLabel("Work email").fill(address);
+  await page.getByLabel("Password", { exact: true }).fill(secret);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/dashboard/);
+  const attention = page.getByRole("region", {
+    name: "Needs your attention",
+    exact: true,
+  });
+  await expect(attention.getByRole("listitem")).toHaveCount(4);
+  await expect(attention.getByRole("listitem").first()).toContainText(
+    "Microsoft 365",
+  );
+  await expect(
+    attention.getByRole("link", {
+      name: "Answer review: Microsoft 365",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", `/reviews/${review!.id}`);
+  await expect(
+    attention.getByText("Microsoft 365", { exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    attention.getByText("Legacy design tool", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Add software", exact: true }),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 1600, height: 1100 });
+  await page.screenshot({
+    path: ".artifacts/dashboard-redesign-desktop.png",
+    fullPage: true,
+    animations: "disabled",
+    caret: "initial",
+  });
+  expect(
+    await attention
+      .locator(".priority-item-copy p")
+      .first()
+      .evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+  ).toBeGreaterThanOrEqual(15);
+  const touch = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  try {
+    const mobile = await touch.newPage();
+    await touch.addCookies(await page.context().cookies());
+    await mobile.goto("/dashboard");
+    expect(
+      await mobile.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await mobile.locator(".dashboard-history").scrollIntoViewIfNeeded();
+    await expect(mobile.locator(".dashboard-history")).toBeInViewport();
+    await mobile.getByRole("heading", { level: 1 }).scrollIntoViewIfNeeded();
+    await mobile.screenshot({
+      path: ".artifacts/dashboard-redesign-mobile.png",
+      fullPage: true,
+      animations: "disabled",
+      caret: "initial",
+    });
+    await mobile
+      .getByRole("link", { name: "Answer review: Microsoft 365", exact: true })
+      .tap();
+    await expect(mobile).toHaveURL(new RegExp(`/reviews/${review!.id}$`));
+    await mobile.goto("/settings#notifications");
+    await expect(
+      mobile.getByRole("heading", {
+        name: "Workspace administration",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await expect(mobile.locator("#notifications")).toBeVisible();
+    await expect(
+      mobile.getByRole("heading", { name: "Your account", exact: true }),
+    ).toBeVisible();
+    await mobile.getByRole("heading", { name: "Settings", exact: true }).tap();
+    await mobile.screenshot({
+      path: ".artifacts/settings-redesign-mobile.png",
+      fullPage: true,
+      animations: "disabled",
+      caret: "initial",
+    });
+    await mobile.setViewportSize({ width: 320, height: 700 });
+    expect(
+      await mobile.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  } finally {
+    await touch.close();
+  }
+  const enlarged = await browser.newContext({
+    viewport: { width: 640, height: 450 },
+    deviceScaleFactor: 2,
+  });
+  try {
+    await enlarged.addCookies(await page.context().cookies());
+    const zoomed = await enlarged.newPage();
+    for (const route of ["/dashboard", "/settings"]) {
+      await zoomed.goto(route);
+      expect(
+        await zoomed.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      ).toBe(true);
+    }
+  } finally {
+    await enlarged.close();
+  }
+  // Use an existing real privileged account; no UI-only role substitution.
+  await login(page, "super_admin");
+  await page.goto("/settings");
+  const workspace = page.locator("#workspace-settings"),
+    delivery = page.locator("#email-delivery");
+  await expect(workspace).not.toHaveAttribute("open", "");
+  await expect(delivery).not.toHaveAttribute("open", "");
+  await expect(
+    page.getByRole("heading", { name: "Add a payment reference", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator("#notifications")).toBeVisible();
+  await page.screenshot({
+    path: ".artifacts/settings-redesign-desktop.png",
+    fullPage: true,
+    animations: "disabled",
+    caret: "initial",
+  });
+  const summary = workspace.locator(":scope > summary");
+  await summary.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    workspace.getByRole("button", {
+      name: "Save workspace settings",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await summary.focus();
+  await page.keyboard.press("Space");
+  await expect(
+    workspace.getByRole("button", {
+      name: "Save workspace settings",
+      exact: true,
+    }),
+  ).not.toBeVisible();
+  await openDeliveryTools(page);
+  await expect(
+    delivery.getByRole("button", { name: "Run reminders now", exact: true }),
+  ).toBeVisible();
+  await expect(workspace).not.toHaveAttribute("open", "");
 });

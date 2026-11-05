@@ -70,12 +70,12 @@ export function SpendingCharts({ software }: { software: Subscription[] }) {
                   />
                   <XAxis
                     dataKey="name"
-                    tick={{ fontSize: 11 }}
+                    tick={{ fontSize: 14, fill: "#526071" }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <YAxis
-                    tick={{ fontSize: 11 }}
+                    tick={{ fontSize: 14, fill: "#526071" }}
                     axisLine={false}
                     tickLine={false}
                   />
@@ -86,6 +86,7 @@ export function SpendingCharts({ software }: { software: Subscription[] }) {
                   />
                   <Bar
                     dataKey="cost"
+                    isAnimationActive={false}
                     fill="var(--caedm-blue)"
                     radius={[5, 5, 0, 0]}
                     maxBarSize={44}
@@ -123,7 +124,7 @@ export function SpendingCharts({ software }: { software: Subscription[] }) {
       <section className="panel">
         <div className="panel-heading">
           <div>
-            <h2>Where it goes</h2>
+            <h2>Spending by category</h2>
             <p>Annual recurring cost by category · {currency}</p>
           </div>
         </div>
