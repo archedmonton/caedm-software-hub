@@ -1,7 +1,7 @@
 export const reviewHelp = {
   overview: {
     title: "Usage reviews",
-    text: "Usage reviews ask the assigned owner whether software is still needed before the cancellation decision deadline. Only that review's owner can answer, including when the owner is Finance or an administrator. Billing reminder preferences do not remove review responsibilities.",
+    text: "Usage reviews ask the assigned owner whether software is still needed before the cancellation decision deadline. Only that review's owner can answer, including when the owner is Finance or an administrator. Settings → Notifications controls software emails, including review requests and Finance updates. Turning emails off does not remove reviews or the responsibility to answer them in the Hub.",
   },
   filters: {
     title: "Review filters",

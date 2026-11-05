@@ -34,6 +34,7 @@ test("personal preference actions bind identity to the signed-in user and discar
     {
       profile_id: "90000000-0000-4000-8000-000000000003",
       enabled: true,
+      only_owned: true,
       first_notice_days: 21,
       second_notice_days: 3,
     },

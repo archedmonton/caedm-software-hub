@@ -18,7 +18,7 @@ export default async function Settings() {
   const teams = await allRows<Team>(db, "teams");
   const preferenceResult = await db
     .from("billing_reminder_preferences")
-    .select("enabled,first_notice_days,second_notice_days")
+    .select("enabled,only_owned,first_notice_days,second_notice_days")
     .eq("profile_id", profile.id)
     .maybeSingle();
   const reviewLogs = financeRole(profile.role)
@@ -140,15 +140,15 @@ export default async function Settings() {
             <h2>Reminder delivery</h2>
             <p className="text-muted-foreground my-5 text-sm">
               The production scheduler runs daily at 15:00 UTC, using Edmonton
-              business dates. It delivers personal billing notices (14 and 7
-              days by default) and due usage-review messages. Run it manually to
+              business dates. It delivers eligible software emails according to
+              each recipient&apos;s notification settings. Run it manually to
               process currently due messages; this does not force future notices
               or send ordinary duplicates.
             </p>
             <ActionButton action="reminders">Run reminders now</ActionButton>
             <p className="mt-5 text-sm">
-              <Link className="back-link" href="#billing-reminder-preferences">
-                Customize my billing reminder emails ↓
+              <Link className="back-link" href="#notifications">
+                Manage my notifications ↓
               </Link>
             </p>
             <p className="field-hint mt-5">
@@ -158,14 +158,12 @@ export default async function Settings() {
           </section>
         </div>
       )}
-      <section
-        id="billing-reminder-preferences"
-        className="panel p-7 mt-6 max-w-4xl"
-      >
-        <h2 className="mb-3">Your billing reminders</h2>
+      <section id="notifications" className="panel p-7 mt-6 max-w-4xl">
+        <h2 className="mb-3">Notifications</h2>
         <p className="text-muted-foreground mb-5 text-sm">
-          Choose when the Hub emails you before the billing date for software
-          you own. Your settings do not change another employee’s preferences.
+          Choose whether to receive software emails and which software to
+          include. These settings are personal and never change your workspace
+          permissions.
         </p>
         <BillingPreferences
           preferences={

@@ -17,11 +17,11 @@ export async function saveBillingReminderPreferences(
   if (error)
     return {
       error:
-        "Your billing preferences could not be saved. Check your connection or ask an administrator to verify setup.",
+        "Your notification settings could not be saved. Check your connection or ask an administrator to verify setup.",
     };
   revalidatePath("/settings");
   return {
     success:
-      "Your billing reminder preferences are saved. Usage review requests are unchanged.",
+      "Your notification settings are saved. Review assignments and account security emails are unchanged.",
   };
 }

@@ -250,6 +250,12 @@ test("Super Admin retains organization-wide software, expense, settings and ordi
   });
 });
 test("Super Admin receives Finance response notifications and can invoke administrative reviews", async () => {
+  await asUser(db, root, () =>
+    db.query(
+      "insert into billing_reminder_preferences(profile_id,only_owned) values($1,false) on conflict(profile_id) do update set only_owned=false",
+      [root],
+    ),
+  );
   const software = (
     await db.query(
       "select id from software_subscriptions where owner_id=$1 and next_billing_date is not null limit 1",

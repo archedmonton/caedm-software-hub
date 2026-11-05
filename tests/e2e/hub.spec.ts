@@ -2178,17 +2178,12 @@ test("field information and reference dialogs support keyboard focus, Escape and
   }
 });
 
-test("software owners save personal billing timings, validation and opt-out without changing another employee", async ({
+test("employees save notification scope, timings and master opt-out with accessible controls", async ({
   page,
 }) => {
   await login(page, "staff");
-  await page.goto("/settings");
-  const section = page.locator("section").filter({
-    has: page.getByRole("heading", {
-      name: "Your billing reminders",
-      exact: true,
-    }),
-  });
+  await page.goto("/settings#notifications");
+  const section = page.locator("#notifications");
   const first = section.getByLabel(
     "First billing notice (days before billing)",
     { exact: true },
@@ -2197,54 +2192,98 @@ test("software owners save personal billing timings, validation and opt-out with
     "Second billing notice (days before billing)",
     { exact: true },
   );
+  const toggle = section.getByRole("switch", {
+    name: "Software email notifications",
+    exact: true,
+  });
+  const scope = section.getByRole("checkbox", {
+    name: "Only software I own",
+    exact: true,
+  });
+  const save = section.getByRole("button", {
+    name: "Save notification settings",
+    exact: true,
+  });
+  await expect(toggle).toBeChecked();
+  await expect(scope).toBeChecked();
   await expect(first).toHaveValue("14");
   await expect(second).toHaveValue("7");
+  await scope.uncheck();
   await first.fill("21");
   await second.fill("3");
-  await section
-    .getByRole("button", { name: "Save billing preferences", exact: true })
-    .click();
+  await save.click();
   await expect(section.getByRole("status")).toContainText(
-    "preferences are saved",
+    "notification settings are saved",
   );
   await page.reload();
+  await expect(toggle).toBeChecked();
+  await expect(scope).not.toBeChecked();
   await expect(first).toHaveValue("21");
   await expect(second).toHaveValue("3");
-  await first.fill("3");
-  await second.fill("7");
-  await section
-    .getByRole("button", { name: "Save billing preferences", exact: true })
-    .click();
-  await expect(section.getByRole("alert")).toContainText(
-    "first notice must be earlier",
-  );
-  await page.reload();
-  await expect(first).toHaveValue("21");
-  await section.getByRole("checkbox").uncheck();
-  await section
-    .getByRole("button", { name: "Save billing preferences", exact: true })
-    .click();
-  await expect(section.getByRole("status")).toBeVisible();
-  await page.reload();
-  await expect(section.getByRole("checkbox")).not.toBeChecked();
-  await page.setViewportSize({ width: 390, height: 844 });
   await section.screenshot({
-    path: ".artifacts/billing-preferences-mobile.png",
+    path: ".artifacts/notifications-settings-desktop.png",
     animations: "disabled",
     caret: "initial",
   });
+  await first.fill("3");
+  await second.fill("7");
+  await save.click();
+  await expect(section.getByRole("alert")).toContainText(
+    "first notice must be earlier",
+  );
+  // Invalid disabled fields must never trap a user who wants to stop email.
+  await toggle.focus();
+  await page.keyboard.press("Space");
+  await expect(toggle).not.toBeChecked();
+  await expect(scope).toBeDisabled();
+  await expect(first).toBeDisabled();
+  await expect(first).toHaveValue("21");
+  await expect(second).toHaveValue("3");
+  await save.click();
+  await expect(section.getByRole("status")).toContainText(
+    "notification settings are saved",
+  );
+  await page.reload();
+  await expect(toggle).not.toBeChecked();
+  await expect(scope).not.toBeChecked();
+  await expect(first).toHaveValue("21");
+  await expect(second).toHaveValue("3");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await section.screenshot({
+    path: ".artifacts/notifications-settings-mobile-off.png",
+    animations: "disabled",
+    caret: "initial",
+  });
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(toggle).toBeChecked();
+  await expect(scope).toBeEnabled();
   await section
     .getByRole("button", { name: "Restore defaults", exact: true })
     .click();
-  await section
-    .getByRole("button", { name: "Save billing preferences", exact: true })
-    .click();
+  await expect(toggle).toBeChecked();
+  await expect(scope).toBeChecked();
+  await save.click();
   await expect(section.getByRole("status")).toBeVisible();
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await login(page, "admin");
-  await page.goto("/settings");
+  await page.reload();
   await expect(first).toHaveValue("14");
   await expect(second).toHaveValue("7");
+  await section.screenshot({
+    path: ".artifacts/notifications-settings-mobile.png",
+    animations: "disabled",
+    caret: "initial",
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await login(page, "admin");
+  await page.goto("/settings#notifications");
+  await expect(first).toHaveValue("14");
+  await expect(second).toHaveValue("7");
+  await expect(scope).toBeChecked();
   expect((await page.request.get("/api/jobs/reminders")).status()).toBe(401);
 });
 
@@ -2365,6 +2404,97 @@ test("14-day and 7-day billing reminders deliver branded email exactly once thro
   }
   await run();
   expect(await messages()).toHaveLength(2);
+});
+
+test("Finance wider scope delivers authorized software emails and the master switch stops delivery on touch screens", async ({
+  page,
+  browser,
+}) => {
+  const touch = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const mobile = await touch.newPage();
+  const messages = async (name: string, recipient: string) => {
+    const list = await (
+      await fetch(
+        `${config.MAILPIT_URL || config.INBUCKET_URL}/api/v1/messages?limit=1000`,
+      )
+    ).json();
+    return (
+      list.messages as { Subject: string; To: { Address: string }[] }[]
+    ).filter(
+      (m) =>
+        m.Subject.endsWith(name) && m.To.some((t) => t.Address === recipient),
+    );
+  };
+  const run = async () => {
+    await page.goto("/settings");
+    await page
+      .getByRole("button", { name: "Run reminders now", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Reminder run complete" }),
+    ).toBeVisible({ timeout: 60000 });
+  };
+  try {
+    // Keep one authorized job-runner session; repeated logins can exhaust the
+    // real 15-attempt authentication limit during the full browser suite.
+    await login(page, "super_admin");
+    await login(mobile, "finance");
+    await mobile.goto("/settings#notifications");
+    const section = mobile.locator("#notifications");
+    const scope = section.getByRole("checkbox", {
+      name: "Only software I own",
+      exact: true,
+    });
+    const toggle = section.getByRole("switch", {
+      name: "Software email notifications",
+      exact: true,
+    });
+    const save = section.getByRole("button", {
+      name: "Save notification settings",
+      exact: true,
+    });
+    await expect(scope).toBeChecked();
+    await expect(toggle).toBeChecked();
+    await scope.tap();
+    await save.tap();
+    await expect(section.getByRole("status")).toContainText(
+      "notification settings are saved",
+    );
+    const included = await billingFixture(6);
+    await run();
+    await expect
+      .poll(async () => (await messages(included.name, emails.finance)).length)
+      .toBe(1);
+    await expect
+      .poll(async () => (await messages(included.name, emails.staff)).length)
+      .toBe(1);
+    await toggle.tap();
+    await save.tap();
+    await expect(section.getByRole("status")).toContainText(
+      "notification settings are saved",
+    );
+    await mobile.reload();
+    await expect(toggle).not.toBeChecked();
+    await expect(scope).not.toBeChecked();
+    const excluded = await billingFixture(5);
+    await run();
+    await expect
+      .poll(async () => (await messages(excluded.name, emails.staff)).length)
+      .toBe(1);
+    expect(await messages(excluded.name, emails.finance)).toHaveLength(0);
+    await section
+      .getByRole("button", { name: "Restore defaults", exact: true })
+      .tap();
+    await save.tap();
+    await expect(section.getByRole("status")).toBeVisible();
+  } finally {
+    await touch.close();
+  }
 });
 
 test("Finance Centre Beta labels and Usage Review field help remain accessible on desktop and mobile", async ({

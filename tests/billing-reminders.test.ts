@@ -22,6 +22,7 @@ describe("billing reminder preferences and professional email content", () => {
   test("defaults are enabled with 14-day and 7-day notices", () =>
     expect(billingReminderSchema.parse(billingReminderDefaults)).toEqual({
       enabled: true,
+      only_owned: true,
       first_notice_days: 14,
       second_notice_days: 7,
     }));
@@ -64,7 +65,8 @@ describe("billing reminder preferences and professional email content", () => {
     expect(message.html).toContain("Example &lt;Employee&gt;");
     expect(message.html).toContain("Research &amp; Planning");
     expect(message.html).toContain("cid:caedm-logo@software-hub.caedm.ca");
-    expect(message.html).toContain("/settings");
+    expect(message.html).toContain("/settings#notifications");
+    expect(message.text).toContain("Manage your software email notifications");
     expect(message.html).not.toContain(notice.claim_token);
     expect(message.inlineBrandLogo).toBe(true);
   });
