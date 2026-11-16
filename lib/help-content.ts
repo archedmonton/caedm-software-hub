@@ -90,6 +90,21 @@ export const roleCapabilities = [
 ] as const;
 export const helpArticles: HelpArticle[] = [
   {
+    id: "email-senders",
+    category: "Getting started",
+    title: "Which email addresses does Software Hub use?",
+    summary:
+      "Recognize the purpose of account emails, invitations and automated notices.",
+    steps: [
+      "With Resend enabled, account verification, password resets and sign-in messages come from noreply@caedm.ca. Administrator invitations come from invitations@caedm.ca. Both display CAEDM Software Hub.",
+      "Billing reminders and general automated messages use notifications@caedm.ca. Account approval/access decisions and Finance review notices use approvals@caedm.ca. Security and active-account role changes use security-alerts@caedm.ca.",
+      "reports@caedm.ca is reserved for report and summary delivery. Registering that sender does not create a scheduled report or change who can access Finance reports.",
+      "Software notification preferences control software reminders. They do not turn off essential verification, invitations, account-access decisions or security notices.",
+      "Approval and role-change notices describe a recorded change and can arrive after background delivery. Your current role and department membership in Software Hub determine your actual access.",
+      "Never send your password, verification code or invitation link in a reply. If an email is unexpected, open Software Hub from your saved address and contact IT or the developer. Do not rely on a display name alone to establish authenticity.",
+    ],
+  },
+  {
     id: "roles-overview",
     category: "Roles & access",
     title:

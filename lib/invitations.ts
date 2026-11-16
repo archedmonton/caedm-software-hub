@@ -58,6 +58,7 @@ export async function deliverInvitation(
   try {
     await provider.send({
       id: randomBytes(16).toString("hex"),
+      purpose: "invitations",
       to: invite.email,
       ...invitationMessage(invite, origin, token),
     });
@@ -72,7 +73,7 @@ export async function deliverInvitation(
   });
   if (!successful)
     throw new Error(
-      "Email delivery failed. Check SMTP settings, then use Resend invitation.",
+      "Email delivery failed. Check email provider settings, then use Resend invitation.",
     );
   if (finishError)
     throw new Error(

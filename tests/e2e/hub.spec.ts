@@ -4,6 +4,8 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
+import { Webhook } from "standardwebhooks";
+import { localEmailHookSecret } from "../../scripts/local-config.mjs";
 
 async function openReference(page: Page, field: string, title: string) {
   const dropdown = page.getByRole("combobox", { name: field, exact: true });
@@ -320,7 +322,10 @@ test("local reminders create authenticated reviews and the owner can respond", a
     )
     .toBe(true);
   await login(page, "staff");
-  await page.getByRole("link", { name: /Usage Reviews/ }).click();
+  await page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name: /^Usage Reviews/ })
+    .click();
   await expect(page).toHaveURL(/\/reviews$/);
   await page.getByRole("link", { name: softwareName, exact: true }).click();
   await page.getByLabel("Still Needed").check();
@@ -603,6 +608,7 @@ test("administrator invitation sends branded mail and requires password setup be
   await sendEmployeeInvitation(page, email);
   const mail = await capturedInvitation(email);
   expect(mail.from.Name).toBe("CAEDM Software Hub");
+  expect(mail.from.Address).toBe("invitations@caedm.ca");
   expect(mail.html).toContain("Accept invitation");
   expect(mail.html).toContain('src="cid:caedm-logo@software-hub.caedm.ca"');
   expect(mail.html).toContain("#860038");
@@ -2856,4 +2862,222 @@ test("dashboard prioritizes action and Settings separates personal preferences f
     delivery.getByRole("button", { name: "Run reminders now", exact: true }),
   ).toBeVisible();
   await expect(workspace).not.toHaveAttribute("open", "");
+});
+
+async function capturedAccountEmail(email: string, subject: string) {
+  let captured:
+    | { HTML: string; Text: string; From: { Name: string; Address: string } }
+    | undefined;
+  await expect
+    .poll(async () => {
+      const list = await (
+        await fetch(
+          `${config.MAILPIT_URL || config.INBUCKET_URL}/api/v1/messages`,
+        )
+      ).json();
+      const match = list.messages?.find(
+        (m: { ID: string; Subject: string; To: { Address: string }[] }) =>
+          m.Subject === subject && m.To.some((to) => to.Address === email),
+      );
+      if (match)
+        captured = await (
+          await fetch(
+            `${config.MAILPIT_URL || config.INBUCKET_URL}/api/v1/message/${match.ID}`,
+          )
+        ).json();
+      return Boolean(captured);
+    })
+    .toBe(true);
+  return captured!;
+}
+
+test("signed authentication hook delivers CAEDM verification and reset emails with real Supabase tokens", async ({
+  request,
+  browser,
+}) => {
+  const email = `e2e-auth-hook-${suffix}@caedm.ca`;
+  const generated = await checked(
+    await admin.auth.admin.generateLink({
+      type: "signup",
+      email,
+      password: secret,
+      options: { data: { full_name: "Auth Hook Employee" } },
+    }),
+  );
+  async function deliver(type: string, hash: string) {
+    const body = JSON.stringify({
+      user: {
+        id: generated.user!.id,
+        email,
+        user_metadata: { full_name: "Auth Hook Employee" },
+      },
+      email_data: {
+        email_action_type: type,
+        token_hash: hash,
+        redirect_to: "https://untrusted.invalid",
+      },
+    });
+    const date = new Date();
+    const id = `local-${type}-${suffix}`;
+    const signature = new Webhook(
+      localEmailHookSecret.replace(/^v1,/, ""),
+    ).sign(id, date, body);
+    return request.post("/api/auth/send-email", {
+      headers: {
+        "webhook-id": id,
+        "webhook-timestamp": String(Math.floor(date.getTime() / 1000)),
+        "webhook-signature": signature,
+        "Content-Type": "application/json",
+      },
+      data: body,
+    });
+  }
+  expect(
+    (await request.post("/api/auth/send-email", { data: {} })).status(),
+  ).toBe(401);
+  expect(
+    (await deliver("signup", generated.properties!.hashed_token)).status(),
+  ).toBe(200);
+  const verify = await capturedAccountEmail(
+    email,
+    "Verify your email address | CAEDM Software Hub",
+  );
+  expect(verify.From).toMatchObject({
+    Name: "CAEDM Software Hub",
+    Address: "noreply@caedm.ca",
+  });
+  expect(verify.HTML).not.toContain("untrusted.invalid");
+  const link = verify.HTML.match(
+    /http:\/\/localhost:3100\/auth\/confirm[^"<>\s]+/,
+  )![0].replaceAll("&amp;", "&");
+  const otherBrowser = await browser.newContext();
+  try {
+    const page = await otherBrowser.newPage();
+    await page.goto(link);
+    await expect(page).toHaveURL(/pending-approval/);
+    const reset = await checked(
+      await admin.auth.admin.generateLink({ type: "recovery", email }),
+    );
+    expect(
+      (await deliver("recovery", reset.properties!.hashed_token)).status(),
+    ).toBe(200);
+    const mail = await capturedAccountEmail(
+      email,
+      "Reset your password | CAEDM Software Hub",
+    );
+    expect(mail.From.Address).toBe("noreply@caedm.ca");
+    const resetLink = mail.HTML.match(
+      /http:\/\/localhost:3100\/auth\/confirm[^"<>\s]+/,
+    )![0].replaceAll("&amp;", "&");
+    await page.goto(resetLink);
+    await expect(
+      page.getByRole("heading", { name: "Choose a new password" }),
+    ).toBeVisible();
+    await page
+      .getByLabel("New password", { exact: true })
+      .fill(secret + "HookReset9");
+    await page.getByLabel("Confirm password").fill(secret + "HookReset9");
+    await page.getByRole("button", { name: "Update password" }).click();
+    await expect(page.getByRole("status")).toContainText("Password updated");
+    await page.goto("/software");
+    await expect(page).toHaveURL(/pending-approval/);
+    const logo = (await readFile("lib/assets/caedm-logo.png")).toString(
+      "base64",
+    );
+    const preview = verify.HTML.replaceAll(
+      /http:\/\/localhost:3100\/auth\/confirm[^"<>\s]+/g,
+      "https://caedm-software-hub.vercel.app/login",
+    ).replaceAll(
+      "cid:caedm-logo@software-hub.caedm.ca",
+      `data:image/png;base64,${logo}`,
+    );
+    await page.setViewportSize({ width: 900, height: 900 });
+    await page.setContent(preview);
+    await page.screenshot({
+      path: ".artifacts/resend-auth-email-desktop.png",
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: ".artifacts/resend-auth-email-mobile.png",
+      fullPage: true,
+    });
+  } finally {
+    await otherBrowser.close();
+  }
+});
+
+test("account approval and privilege notices retain access controls and use their dedicated senders", async ({
+  request,
+}) => {
+  const email = `e2e-access-notice-${suffix}@caedm.ca`;
+  const user = await checked(
+    await admin.auth.admin.createUser({
+      email,
+      password: secret,
+      email_confirm: true,
+      user_metadata: { full_name: "Access Notice Employee" },
+    }),
+  );
+  const client = createClient(
+    config.API_URL,
+    config.PUBLISHABLE_KEY || config.ANON_KEY,
+    { auth: { persistSession: false } },
+  );
+  await checked(
+    await client.auth.signInWithPassword({
+      email: emails.admin,
+      password: secret,
+    }),
+  );
+  await checked(
+    await client
+      .from("profiles")
+      .update({ status: "active" })
+      .eq("id", user.user!.id)
+      .select()
+      .single(),
+  );
+  await checked(
+    await client
+      .from("profiles")
+      .update({ role: "finance" })
+      .eq("id", user.user!.id)
+      .select()
+      .single(),
+  );
+  expect((await request.post("/api/jobs/account-emails")).status()).toBe(401);
+  const cron =
+    process.env.CRON_SECRET ||
+    "local-development-job-secret-at-least-32-characters";
+  for (let batch = 0; batch < 10; batch++) {
+    const response = await request.post("/api/jobs/account-emails", {
+      headers: { Authorization: `Bearer ${cron}` },
+    });
+    expect(response.status()).toBe(200);
+    const result = await response.json();
+    expect(result.failed).toBe(0);
+    if (result.sent < 10) break;
+  }
+  const approval = await capturedAccountEmail(
+    email,
+    "Your Software Hub account is approved | CAEDM Software Hub",
+  );
+  const security = await capturedAccountEmail(
+    email,
+    "Your Software Hub role was changed | CAEDM Software Hub",
+  );
+  expect(approval.From.Address).toBe("approvals@caedm.ca");
+  expect(security.From.Address).toBe("security-alerts@caedm.ca");
+  expect(security.Text).toContain("Finance");
+  expect(security.Text).not.toContain("claim_token");
+  const quiet = await request.post("/api/jobs/account-emails", {
+    headers: { Authorization: `Bearer ${cron}` },
+  });
+  expect(await quiet.json()).toEqual({ sent: 0, failed: 0 });
 });

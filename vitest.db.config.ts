@@ -10,6 +10,7 @@ export default defineConfig({
       "tests/software-references.test.mjs",
       "tests/billing-reminders.test.mjs",
       "tests/notification-scope.test.mjs",
+      "tests/account-emails.test.mjs",
     ],
     testTimeout: 15000,
   },

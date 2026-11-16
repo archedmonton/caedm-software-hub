@@ -3,7 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { configured, publicConfig } from "@/lib/env";
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
-  if (!configured() || request.nextUrl.pathname.startsWith("/api/jobs"))
+  if (
+    !configured() ||
+    request.nextUrl.pathname.startsWith("/api/jobs") ||
+    request.nextUrl.pathname === "/api/auth/send-email"
+  )
     return response;
   const { url, key } = publicConfig();
   const supabase = createServerClient(url, key, {

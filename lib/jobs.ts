@@ -49,7 +49,16 @@ export async function runReminders() {
     const text = `Hello ${n.full_name},\n\n${n.kind === "response" ? "A usage response is ready for Finance to review." : "Please review whether this software is still needed."}\n\nSoftware: ${n.software_name}\nRenewal: ${n.renewal_date}\nDecision deadline: ${n.deadline}\nBilling amount: ${money(cents(n.amount), n.currency)} ${n.currency}\n\nOpen the authenticated review page: ${origin}/reviews/${n.review_id}\n\nThis request does not cancel any subscription with a vendor.\n\nManage your software email notifications: ${origin}/settings#notifications\nCAEDM Software Hub`;
     let successful = false;
     try {
-      await provider.send({ id: n.id, to: n.email, subject, text });
+      await provider.send({
+        id: n.id,
+        to: n.email,
+        subject,
+        text,
+        purpose:
+          n.kind === "response" || n.kind === "escalation"
+            ? "approvals"
+            : "notifications",
+      });
       successful = true;
     } catch {
       /* Persist a safe error without SMTP credentials or vendor responses. */

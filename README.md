@@ -48,10 +48,12 @@ Reset removes this local project's accounts and records. Never use it against a 
 | `NEXT_PUBLIC_SUPABASE_URL`             | Supabase API URL                                                                            |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public publishable key, or legacy anon key                                                  |
 | `APP_URL`                              | Canonical application origin; HTTPS required in production                                  |
-| `SUPABASE_SERVICE_ROLE_KEY`            | Server only: authentication throttling, invitation onboarding and scheduled email workers    |
+| `SUPABASE_SERVICE_ROLE_KEY`            | Server only: authentication throttling, invitation onboarding and scheduled email workers   |
 | `CRON_SECRET`                          | Server only: random secret of at least 32 characters for scheduled POST requests            |
-| `EMAIL_PROVIDER`                       | `local` in development, `smtp` for production delivery                                      |
-| `EMAIL_FROM`                           | Verified sender identity configured with your SMTP provider                                 |
+| `EMAIL_PROVIDER`                       | `local` in development; `resend` for HTTPS API delivery; `smtp` for the legacy fallback     |
+| `RESEND_API_KEY`                       | Server-only Resend sending key authorized for the verified `caedm.ca` domain                |
+| `SUPABASE_SEND_EMAIL_HOOK_SECRET`      | Server-only signing secret for Supabase's HTTP Send Email hook; includes `v1,whsec_` prefix |
+| `EMAIL_FROM`                           | Authorized legacy SMTP sender; Resend uses the six fixed purpose-specific senders below     |
 | `SMTP_HOST`, `SMTP_PORT`               | SMTP host and port; defaults to 587 with required STARTTLS; 465 uses implicit TLS           |
 | `SMTP_USER`, `SMTP_PASSWORD`           | Server only SMTP credentials, when required                                                 |
 | `DATABASE_URL`                         | Optional direct PostgreSQL connection for external tooling; not used by application queries |
@@ -67,7 +69,7 @@ In **Authentication → URL Configuration**:
 1. Set Site URL to the canonical `APP_URL`.
 2. Allow the exact `/auth/callback`, `/auth/callback?next=/auth/update-password`, and `/auth/confirm` redirect URLs on that origin. The local configuration includes both localhost:3100 (`dev:local`) and localhost:3000 (`dev`) callback URLs.
 3. Require email confirmation and password strength: at least 12 characters including uppercase, lowercase, and digits. Disable anonymous sign-in and unused OAuth providers.
-4. Configure Auth's email SMTP separately if needed. App notification SMTP does not configure Supabase's own verification/reset delivery.
+4. Configure the signed HTTP Send Email hook described below for Resend authentication delivery. Without that hook, Supabase uses its separately configured Auth SMTP; changing the app's EMAIL_PROVIDER alone does not switch Auth.
 
 In **Authentication → Hooks**, create a **Before User Created** hook, select **Postgres function**, and choose `public.before_user_created`. The migration grants execution only to `supabase_auth_admin` and revokes public/anonymous execution. `supabase/config.toml` enables this hook automatically for the local stack. The database user-insert trigger also rejects other domains as defence in depth.
 
@@ -87,7 +89,7 @@ After a designated administrator verifies their email, execute the reviewed `sup
 
 On Team Management, create a department, then use **Invite an employee** to select the employee's name, exact @caedm.ca email, role, department and software permissions. Invitations are intended for new accounts; manage an existing account through Registered accounts instead.
 
-The employee receives **Invitation from CAEDM Software Hub** from the mailbox in EMAIL_FROM, with the display name **CAEDM Software Hub**. SMTP_USER remains the provider's login username; it does not control the visible sender name. Both HTML and plain-text versions are sent through the application's SMTP configuration. Supabase Auth SMTP remains responsible for ordinary registration and password reset messages.
+The employee receives **Invitation from CAEDM Software Hub**, with the display name **CAEDM Software Hub**. Resend invitations use **invitations@caedm.ca**; the legacy SMTP provider uses EMAIL_FROM. SMTP_USER remains that provider's login username and does not control the display name. Both branded HTML and plain text are retained. Supabase registration/reset emails use **noreply@caedm.ca** once the signed Send Email hook is enabled.
 
 Invitation emails use the supplied CAEDM logo on white, burgundy headings and action buttons, gold accents and blue support links. The logo is attached inline with a Content-ID rather than fetched from an external image URL. `next.config.ts` includes lib/assets/caedm-logo.png in server file traces so the email worker can load it on Vercel. The message includes department, a readable role name, invited work email, exact expiry in Edmonton time, password setup instructions and a fallback link. Support links and Reply-To use the developer contact in lib/developer.ts. The authorized SMTP sender mailbox is preserved.
 
@@ -97,7 +99,51 @@ Invitation links expire after 72 hours. Opening a link does not consume it: the 
 
 Only invitation token hashes are stored. Each invitation reserves a server-generated Auth user ID so signup metadata cannot bypass onboarding. Acceptance uses a short exclusive claim; interrupted setup can resume for the same invitation without adopting unrelated existing accounts. Resending, revocation, expiry and loss of the inviting administrator's verified active status prevent activation. Ordinary signup and direct profile activation cannot bypass a pending invitation. Audit entries exclude token hashes and claim secrets.
 
-For production, set EMAIL_PROVIDER=smtp, an authorized EMAIL_FROM mailbox, SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD, the server-only SUPABASE_SERVICE_ROLE_KEY and APP_URL=https://your-stable-domain in Vercel. This feature extends the server key's scope only to administrator-authorized onboarding and service-only invitation RPCs. Never prefix it with NEXT_PUBLIC_. Apply the additive invitation migration before deploying the new application version. Existing accounts and financial records are preserved.
+For Resend production delivery, follow the release checklist below. Legacy SMTP remains available with EMAIL_PROVIDER=smtp, an authorized EMAIL_FROM, and the SMTP_* variables. Both modes require the server-only SUPABASE_SERVICE_ROLE_KEY for authorized onboarding/jobs and APP_URL=https://your-stable-domain. Never prefix secrets with NEXT_PUBLIC_. Apply the invitation migration before using onboarding. Existing accounts and financial records are preserved.
+
+## Resend delivery and purpose-specific senders
+
+`EMAIL_PROVIDER=resend` sends through **https://api.resend.com/emails**, with no connection to the Exchange SMTP endpoint. The application selects senders from `lib/email-senders.ts`; employee-supplied content cannot choose a From address. All six use the display name **CAEDM Software Hub**:
+
+| Purpose               | Sender                   | Current workflow                                                                               |
+| --------------------- | ------------------------ | ---------------------------------------------------------------------------------------------- |
+| Authentication        | noreply@caedm.ca         | Verified Supabase hook: registration, reset, magic link, email change and reauthentication     |
+| General notifications | notifications@caedm.ca   | Billing reminders, initial/follow-up Usage Reviews, feature-request delivery                   |
+| Invitations           | invitations@caedm.ca     | Administrator employee invitations; Supabase Auth invitations if used                          |
+| Security              | security-alerts@caedm.ca | Enabled Supabase security events, active-account role changes, suspension/deactivation notices |
+| Reports               | reports@caedm.ca         | Registered sender for report/summary delivery; this change does not add a report schedule      |
+| Approvals             | approvals@caedm.ca       | Account approvals/access decisions and Finance review responses/escalations                    |
+
+Resend does not create Outlook mailboxes or aliases. Configure monitored aliases or use the existing developer Reply-To. Ordinary notices retain developer support; feature requests retain the verified requester's Reply-To. Have IT maintain the verified domain's SPF/DKIM/DMARC configuration and **disable open/click tracking for transactional authentication and invitation links**. Provider acceptance is not proof of inbox delivery: monitor Resend delivery/bounce events and test with intended recipients before rollout. No inbox placement guarantee is made.
+
+The transport keeps inline CID logos, HTML/plain text, deterministic Message-ID and an API idempotency key based on the logical message and exact payload. Identical retries within Resend's 24-hour retention use the same key; a rotated invitation gets a fresh key. Existing database claims/retry limits remain authoritative beyond that window. Requests have bounded timeouts and redirects are refused. Each process spaces requests below two/second; separate Vercel instances still share the provider's quota, so monitor 429 responses and size capacity appropriately. Queued jobs retain failures for retry. Logs contain only provider, purpose, safe reason and HTTP status, never addresses, content, keys, tokens or raw provider responses. There is no automatic fallback from a failed Resend request to SMTP, avoiding ambiguous duplicate delivery.
+
+### Authentication without SMTP
+
+`POST /api/auth/send-email` accepts only Supabase Standard Webhooks signatures, with timestamp verification and a maximum 64 KiB body. Invalid, forged, stale, unsupported and non-CAEDM recipient payloads fail closed. Set **SUPABASE_SEND_EMAIL_HOOK_SECRET** to the exact hook secret generated by Supabase (`v1,whsec_...`). A pipe-separated old/new pair is supported during secret rotation. This secret is separate from RESEND_API_KEY and CRON_SECRET. Never log the signed body or signature.
+
+The hook uses noreply for authentication and security-alerts for enabled password/email/phone/identity/MFA change notifications. Secure email changes preserve Supabase's documented reversed token-hash mapping. Registration/reset links use the existing cross-browser `/auth/confirm` verifyOtp flow; other link types use the selected Supabase project's verification endpoint. Link origins are built from APP_URL and the selected project's public URL, not caller redirect/site_url values. Supabase remains responsible for token validity, expiry and Auth security; no application role/approval is granted by this endpoint. Keep the existing **Before User Created** hook enabled. Unsupported event types fail rather than silently dropping a security email.
+
+Supabase HTTP hooks have a five-second total budget. The handler uses short API deadlines and returns generic retryable JSON failures; API idempotency protects identical retries. Enable only the Auth security-notification types actually used by the organization and test them. Normal auth delivery is not governed by a software-reminder opt-out. Hook deployment and Supabase configuration are separate steps; neither a Git push nor adding RESEND_API_KEY enables the hook automatically.
+
+### Approval and privilege-change queue
+
+Migration **202611120001_account_email_notifications.sql** adds an RLS-enabled private operational queue and an after-update trigger. A verified account's approval/status change or an already-active account's role change queues a snapshot in the same transaction as the authorized profile update. Rolled-back/forbidden changes cannot queue mail. Invitation setup retains its existing onboarding email and does not generate a duplicate approval. The recipient is the affected employee; no new organization-wide broadcast or software visibility is granted. Security/access notices are independent of personal software-reminder preferences.
+
+Only service-role delivery RPCs can claim/finish notices. Ordinary authenticated users, including administrators, cannot read or inject queue rows. The worker rechecks the real verified recipient identity, claims up to ten records with exclusive five-minute leases and accepts only the matching current claim token. Failures retry after five minutes, at most five attempts. Obsolete approvals are superseded after a later account-status change. Events preserve recorded change details rather than claiming that a delayed notice describes current access.
+
+Configure an authorized scheduler to **POST `/api/jobs/account-emails` every five minutes**, with `Authorization: Bearer <CRON_SECRET>` from secret storage. This is a separate operational queue, not the software-reminder toggle. Without that scheduler, notices remain safely queued. Monitor scheduler failures, pending queue age, attempts and exhausted failures in the selected project's SQL Editor; the queue is `private.account_email_notifications`. Do not reset attempts or resend successful notices indiscriminately. The application does not expose credentials or queue payloads to browsers.
+
+### Resend production release checklist
+
+1. Review and apply **202611120001_account_email_notifications.sql** to the explicitly selected Software Hub Supabase project, after all earlier migrations. This adds no financial-data rewrite or role changes. Never seed a hosted project.
+2. In Vercel **Production**, set EMAIL_PROVIDER=resend, RESEND_API_KEY, the existing HTTPS APP_URL, public Supabase settings, service credential and CRON_SECRET. Resend ignores legacy EMAIL_FROM/SMTP_* settings; retain them only for an intentional rollback. Configure a sending-only key scoped to verified caedm.ca where available. Enter API keys as literal values without dotenv quotes in Vercel.
+3. Deploy the reviewed code. Confirm `/api/auth/send-email` rejects unsigned requests with 401 (503 until the hook secret is configured). This endpoint must be reachable by Supabase without interactive Vercel Deployment Protection.
+4. In the **selected Supabase project → Authentication → Hooks**, add an **HTTP Send Email** hook targeting `https://caedm-software-hub.vercel.app/api/auth/send-email`. Copy its generated signing secret directly into Vercel's SUPABASE_SEND_EMAIL_HOOK_SECRET. Redeploy to load it, then enable the hook. Keep the Email provider enabled; an enabled Send Email hook replaces Auth SMTP delivery. Keep the existing before-user-created hook and exact redirect allowlist.
+5. Configure the protected five-minute account-email scheduler (and existing feature-request scheduler). Retain the daily software reminder schedule. Monitor safe runtime diagnostics, worker results and Resend delivery logs.
+6. Verify one administrator invitation, signup verification in another browser, password reset, approval notice and role-change notice using intended test employees. Verify actual receipt and sender/Reply-To. This development change does not send live test messages, change hosted configuration or push/deploy automatically.
+
+References: [Resend Email API](https://resend.com/docs/api-reference/emails/send-email), [inline images](https://resend.com/docs/dashboard/emails/embed-inline-images), [idempotency](https://resend.com/docs/dashboard/emails/idempotency-keys), [Supabase Send Email hook](https://supabase.com/docs/guides/auth/auth-hooks/send-email-hook), [hook signing, errors and time budget](https://supabase.com/docs/guides/auth/auth-hooks).
 
 After adding smtp_port to an existing local stack, restart it with npx supabase stop then npx supabase start to expose the port while retaining local data. Local invitation emails go to the local Mailpit SMTP receiver on 127.0.0.1:54325 and can be read at http://127.0.0.1:54324. The local provider refuses invitation delivery against a hosted Supabase URL and is forbidden in production. Invitation tokens stay in the URL fragment and are removed from browser history when captured; they are not sent in GET requests or persisted to client storage.
 
@@ -133,16 +179,16 @@ The native modal supports keyboard focus containment, Escape, a close button and
 
 Help's **Roles & access** topic contains the complete four-role comparison, departmental View/Manage guidance, software ownership rules, approval requirements and privileged account instructions. The comparison is available on public and authenticated Help screens; operational Super Admin grant/revoke instructions are shown only to Super Admins. The comparison table supports keyboard focus and horizontal scrolling on smaller screens.
 
-| Capability | Super Admin | Admin | Finance | Staff |
-| --- | --- | --- | --- | --- |
-| Software, subscription costs and renewals | All departments | All departments | All departments | Assigned departments |
-| Create/edit/pause/cancel/archive software | All departments | All departments | All departments | Assigned departments with Manage permission |
-| Record/correct expenses, audit access and CSV/Excel exports | Yes | Yes | Yes | No |
-| Maintain vendors, categories and limited payment references | Yes | Yes | Yes | No |
-| Invite/approve employees and assign ordinary roles | Yes | Yes | No | No |
-| Departments, memberships, settings and manual reminders | Yes | Ordinary accounts | No | No |
-| Grant/revoke Super Admin or manage those accounts | Yes, except protected developer | No | No | No |
-| Answer usage reviews | Assigned owner only | Assigned owner only | Assigned owner only | Assigned owner only |
+| Capability                                                  | Super Admin                     | Admin               | Finance             | Staff                                       |
+| ----------------------------------------------------------- | ------------------------------- | ------------------- | ------------------- | ------------------------------------------- |
+| Software, subscription costs and renewals                   | All departments                 | All departments     | All departments     | Assigned departments                        |
+| Create/edit/pause/cancel/archive software                   | All departments                 | All departments     | All departments     | Assigned departments with Manage permission |
+| Record/correct expenses, audit access and CSV/Excel exports | Yes                             | Yes                 | Yes                 | No                                          |
+| Maintain vendors, categories and limited payment references | Yes                             | Yes                 | Yes                 | No                                          |
+| Invite/approve employees and assign ordinary roles          | Yes                             | Yes                 | No                  | No                                          |
+| Departments, memberships, settings and manual reminders     | Yes                             | Ordinary accounts   | No                  | No                                          |
+| Grant/revoke Super Admin or manage those accounts           | Yes, except protected developer | No                  | No                  | No                                          |
+| Answer usage reviews                                        | Assigned owner only             | Assigned owner only | Assigned owner only | Assigned owner only                         |
 
 Super Admin includes existing Admin and Finance capabilities. Ordinary Admins cannot promote themselves, grant Super Admin, downgrade or restrict a Super Admin, or edit its memberships. Only Super Admins manage other elevated accounts. Membership and role checks are enforced by PostgreSQL RLS, profile/membership triggers, guarded RPCs and server actions, in addition to UI controls. Signup metadata cannot assign roles or activation, and invitation roles remain Admin/Finance/Staff; invitees must finish password setup before an active account can be elevated separately. Role changes remain in audit history.
 
@@ -160,11 +206,11 @@ The form collects a title, application area, priority, optional department, prob
 
 Submission, history and retry queueing use the signed-in user's client. Requests are private to their eligible owner and verified active administrators under RLS; Finance does not gain access to other employees' suggestions. Audit entries contain delivery metadata rather than request text, contact details or delivery secrets. Ordinary clients cannot claim deliveries or mark an email as sent.
 
-The protected scheduled job at **POST `/api/jobs/feature-requests`** sends up to three queued messages per run. Configure a scheduler supporting POST to invoke it **every five minutes**, with `Authorization: Bearer <CRON_SECRET>` supplied from secret storage. It uses the existing server-only `SUPABASE_SERVICE_ROLE_KEY` and application SMTP configuration; Supabase Auth SMTP is separate. Without this scheduler, requests remain saved and queued. Monitor job failures and pending/failed request statuses; sustained queues need more frequent runs or an appropriate worker batch/duration adjustment.
+The protected scheduled job at **POST `/api/jobs/feature-requests`** sends up to three queued messages per run. Configure a scheduler supporting POST to invoke it **every five minutes**, with `Authorization: Bearer <CRON_SECRET>` supplied from secret storage. It uses the existing server-only `SUPABASE_SERVICE_ROLE_KEY` and selected application email provider. Without this scheduler, requests remain saved and queued. Monitor job failures and pending/failed request statuses; sustained queues need more frequent runs or an appropriate worker batch/duration adjustment.
 
 The database allows five new requests per employee per hour. A per-form key prevents duplicate submissions. Exclusive five-minute delivery leases prevent concurrent sends; failed deliveries become eligible for an automatic retry after five minutes, with a maximum of five attempts. Employees can also queue a retry after a one-minute cooldown. Requests remain saved if SMTP fails. As with other SMTP workers, a process failure after SMTP acceptance but before recording success can result in a duplicate; the stable Message-ID helps downstream deduplication.
 
-Before deploying this feature, review and apply **202610280001_feature_requests.sql** and **202610280002_feature_request_queue.sql**, in order, to the explicitly selected hosted project. Then deploy the application, verify Production `EMAIL_PROVIDER=smtp`, the existing SMTP variables, service credential and `CRON_SECRET`, and enable the protected scheduler. No additional secret variables are required. Verify a real feature email in the intended mailbox after deployment. Local `dev:local` captures these emails in Mailpit at http://127.0.0.1:54324 and does not send to external recipients.
+Before deploying this feature, review and apply **202610280001_feature_requests.sql** and **202610280002_feature_request_queue.sql**, in order, to the explicitly selected hosted project. Then deploy the application, verify Production email provider credentials, service credential and `CRON_SECRET`, and enable the protected scheduler. For Resend, follow the current Resend release checklist above. Verify a real feature email in the intended mailbox after deployment. Local `dev:local` captures these emails in Mailpit at http://127.0.0.1:54324 and does not send to external recipients.
 
 If `/request-feature` shows "Feature requests are temporarily unavailable", the request-history query failed; this message is separate from SMTP delivery. Inspect the safe database error code in server logs. `PGRST205` indicates the table is absent from the API schema cache: confirm the selected hosted project has both feature-request migrations and the expected table/columns before refreshing the API schema cache. Pushing application code to GitHub/Vercel does not apply Supabase migrations. Do not apply unreviewed later role migrations just to repair the already-released feature table. If the CLI cannot connect to the project pooler, an authorized operator can use the selected project's SQL Editor or restore the approved database network connection and rerun the versioned migration process. A missing scheduler leaves submitted requests queued; it does not hide the form.
 
@@ -211,7 +257,7 @@ Settings opens with personal Notifications and a compact Your account panel. Wor
 
 The daily worker creates reviews ahead of the decision deadline. The initial lead time defaults to 30 days before the cancellation decision deadline (earlier than renewal when notice is required). Follow-up defaults to seven days before the deadline, only if the initial message was delivered on an earlier day. Unanswered overdue reviews are escalated once per Finance/Admin recipient. A subscription's review frequency (default 12 months since its last response) is independent of its billing cycle; an unresolved review prevents a fresh review every billing period.
 
-Local development needs no external email credentials. As an approved Admin, open **Settings → Email delivery & activity → Run reminders now**. The local provider records subject/body previews in notification activity and captures branded billing emails in this project's Mailpit inbox. Production refuses the local provider: configure SMTP and test a delivery before scheduling.
+Local development needs no external email credentials. As an approved Admin, open **Settings → Email delivery & activity → Run reminders now**. The local provider records subject/body previews in notification activity and captures branded billing emails in this project's Mailpit inbox. Production refuses the local provider: configure Resend or SMTP and test a delivery before scheduling.
 
 The repository configures a daily Vercel Cron **GET** to `/api/jobs/reminders` at **15:00 UTC** (08:00 MST / 09:00 MDT). The endpoint accepts authenticated GET and POST with the same timing-safe `Authorization: Bearer <CRON_SECRET>` check. Set a server-only `CRON_SECRET` of at least 32 characters in the Production environment; Vercel supplies it to production cron invocations. Existing authenticated POST schedulers remain supported. Prefer one scheduler and remove redundant schedules when switching; do not put secrets in URLs. [Vercel cron quickstart](https://vercel.com/docs/cron-jobs/quickstart) documents production-only invocation. No live scheduler is created by a local test or Git commit until deployment.
 
@@ -231,7 +277,7 @@ Unique review/recipient/message constraints and transaction locks prevent normal
 
 ## Verification
 
-Last verified locally on November 5, 2026: TypeScript and ESLint passed; 91 unit tests, 95 database tests, and all 30 real local-Supabase browser workflows passed; the production build passed. All fourteen existing migrations are applied locally; the Dashboard/Settings redesign adds none. Coverage includes priority ordering and grouping, expired records, correct review links, view-only access, expandable settings, 320px reflow, keyboard/touch controls, complete mobile scrolling and a 200%-equivalent layout. The suite also covers notifications, actual Mailpit delivery, invitations, role protection, software editing, Finance, exports, Help and feature requests. Test setup deactivates only prior local E2E administrators after creating the current run's administrators, preserving history and preventing accumulated test recipients from exceeding real write limits. Production protections are unchanged. Desktop/mobile design and email previews were visually reviewed. External SMTP and hosted deployment require separate verification.
+Last verified locally on November 12, 2026: TypeScript and ESLint passed; 108 unit tests, 101 database tests, and all 32 real local-Supabase browser workflows passed; the production build passed. The two new email browser workflows also passed after the final email-copy update. All fifteen migrations are applied to the local project only. Resend transport tests cover all six senders, inline logos, idempotency, provider/quota/network failures and safe diagnostics. Signed-hook tests cover forged/expired signatures, rotation, payload limits, security events and token-hash mapping. Real local Auth tokens verify cross-browser signup/reset without granting approval. Account queue tests cover permissions, leases, retries, rollback, invitation suppression and superseded approvals. Desktop/mobile email previews were visually reviewed. No live recipient email was sent, no hosted migration was applied and no deployment was performed. The API's read-only response identifies the configured key as sending-only; actual Resend acceptance and inbox delivery still require a controlled deployment test. Existing Dashboard/Settings, Finance, references, notifications and role-protection workflows remain covered. Local fixture cleanup preserves historical records and production protections.
 
 ```powershell
 npm run check
@@ -266,7 +312,7 @@ No development account or client-side demo mode bypasses production authorizatio
 - [ ] Configure production Auth email delivery and verify signup/reset emails.
 - [ ] Bootstrap an explicitly designated verified administrator; assign Finance and department access.
 - [ ] Set server secrets in hosting secret storage, including durable throttling credential and a random job secret.
-- [ ] Configure application SMTP; verify a real reminder and Finance response/escalation notification.
+- [ ] Configure the application email provider; verify a real reminder and Finance response/escalation notification.
 - [ ] Schedule protected POST `/api/jobs/feature-requests` every five minutes and verify a real feature request email, Reply-To and delivery status with active and pending accounts.
 - [ ] Run checks, migration/RLS tests, production build, and local browser suite.
 - [ ] Apply any pending software-editor migrations, including **202611040001_reference_duplicates.sql**, before releasing their UI; smoke test inline creation, duplicate feedback, cancelled modals, owner onboarding, department changes and keyboard/touch guidance with each role. Do not rerun migrations already applied.
