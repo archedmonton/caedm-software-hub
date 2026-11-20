@@ -18,15 +18,65 @@ export type Message = {
   replyTo?: string;
   inlineBrandLogo?: boolean;
   purpose?: EmailPurpose;
+  deliveryRef?: string;
+  brandLogoBase64?: string;
 };
 export interface EmailProvider {
   name: string;
-  send(message: Message): Promise<void>;
+  send(
+    message: Message,
+  ): Promise<{ providerId?: string; provider?: string } | void>;
 }
 export function emailProvider(
   options: { timeoutMs?: number } = {},
 ): EmailProvider {
-  const provider = process.env.EMAIL_PROVIDER || "local";
+  const provider =
+    process.env.EMAIL_PROVIDER ||
+    (process.env.RESEND_API_KEY ? "resend" : "local");
+  const smtpFallback =
+    process.env.EMAIL_SMTP_FALLBACK !== "false" &&
+    Boolean(process.env.SMTP_HOST);
+  const smtpSend = async (message: Message, timeoutMs = 10000) => {
+    const port = Number(process.env.SMTP_PORT || 587);
+    if (
+      !process.env.SMTP_HOST ||
+      !Number.isInteger(port) ||
+      port < 1 ||
+      port > 65535
+    )
+      throw new Error("SMTP fallback is not configured.");
+    const transport = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port,
+      secure: port === 465,
+      requireTLS: port !== 465,
+      auth: process.env.SMTP_USER
+        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD }
+        : undefined,
+      connectionTimeout: timeoutMs,
+      greetingTimeout: timeoutMs,
+      socketTimeout: timeoutMs,
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        send(transport, message, true),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            transport.close();
+            reject(new Error("SMTP delivery timed out."));
+          }, timeoutMs);
+        }),
+      ]);
+      return {
+        provider: "smtp",
+        providerId: `smtp:${result.messageId || createHash("sha256").update(message.id).digest("hex")}`,
+      };
+    } finally {
+      if (timer) clearTimeout(timer);
+      transport.close();
+    }
+  };
   const sender = (message: Message) =>
     professionalSender(
       provider === "smtp" && process.env.EMAIL_FROM
@@ -36,8 +86,15 @@ export function emailProvider(
   const send = (
     transport: ReturnType<typeof nodemailer.createTransport>,
     message: Message,
+    smtpFrom = provider === "smtp",
   ) => {
-    const from = sender(message);
+    // Exchange may authorize only one From mailbox. Preserve its configured Send As identity.
+    const from = smtpFrom
+      ? professionalSender(
+          process.env.EMAIL_FROM ||
+            emailSenders[message.purpose || "notifications"],
+        )
+      : sender(message);
     return transport.sendMail({
       from,
       to: message.to,
@@ -50,9 +107,11 @@ export function emailProvider(
           ? [
               {
                 filename: emailBrand.logoFilename,
-                content: readFileSync(
-                  join(process.cwd(), "lib", "assets", "caedm-logo.png"),
-                ),
+                content: message.brandLogoBase64
+                  ? Buffer.from(message.brandLogoBase64, "base64")
+                  : readFileSync(
+                      join(process.cwd(), "lib", "assets", "caedm-logo.png"),
+                    ),
                 contentType: "image/png",
                 contentDisposition: "inline",
                 cid: emailBrand.logoCid,
@@ -68,6 +127,8 @@ export function emailProvider(
     return {
       name: "resend",
       async send(message) {
+        const deadline = Date.now() + (options.timeoutMs || 10000);
+        let fallbackPermitted = false;
         const purpose = message.purpose || "notifications";
         try {
           const from = sender(message);
@@ -88,15 +149,32 @@ export function emailProvider(
             headers: {
               "Message-ID": `<${createHash("sha256").update(message.id).digest("hex")}@caedm.ca>`,
             },
-            tags: [{ name: "purpose", value: purpose }],
+            tags: [
+              { name: "purpose", value: purpose },
+              ...(message.deliveryRef
+                ? [
+                    {
+                      name: "delivery_ref",
+                      value: z.string().uuid().parse(message.deliveryRef),
+                    },
+                  ]
+                : []),
+            ],
             attachments:
               message.inlineBrandLogo && message.html
                 ? [
                     {
                       filename: emailBrand.logoFilename,
-                      content: readFileSync(
-                        join(process.cwd(), "lib", "assets", "caedm-logo.png"),
-                      ).toString("base64"),
+                      content:
+                        message.brandLogoBase64 ||
+                        readFileSync(
+                          join(
+                            process.cwd(),
+                            "lib",
+                            "assets",
+                            "caedm-logo.png",
+                          ),
+                        ).toString("base64"),
                       content_type: "image/png",
                       content_id: emailBrand.logoCid,
                     },
@@ -128,6 +206,12 @@ export function emailProvider(
             body,
           });
           if (!response.ok) {
+            // Only explicit non-acceptance can cross providers. A timeout, malformed
+            // success, conflict or 5xx might have accepted the email: retry Resend
+            // with the same idempotency key instead of risking a second delivery.
+            fallbackPermitted = [400, 401, 403, 422, 429].includes(
+              response.status,
+            );
             const reason =
               response.status === 429
                 ? "rate_limited"
@@ -147,7 +231,25 @@ export function emailProvider(
           const result = await response.json();
           if (!result || typeof result.id !== "string" || !result.id)
             throw new Error("Invalid email provider response.");
+          return { providerId: result.id, provider: "resend" };
         } catch (error) {
+          const remaining = deadline - Date.now();
+          if (fallbackPermitted && smtpFallback && remaining > 250) {
+            console.error("email_delivery_fallback", {
+              provider: "smtp",
+              purpose,
+              reason: "primary_rejected",
+            });
+            try {
+              return await smtpSend(message, remaining);
+            } catch {
+              console.error("email_delivery_failed", {
+                provider: "smtp",
+                purpose,
+                reason: "fallback_failed",
+              });
+            }
+          }
           // Never log API keys, addresses, content, tokens, or raw provider responses.
           if (!(
             error instanceof Error &&

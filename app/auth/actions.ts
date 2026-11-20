@@ -56,9 +56,14 @@ export async function authenticate(
           "Check your work email to verify your address. An administrator will then approve your access.",
       };
     } else if (mode === "forgot") {
-      await db.auth.resetPasswordForEmail(email, {
+      const { error } = await db.auth.resetPasswordForEmail(email, {
         redirectTo: `${appUrl()}/auth/callback?next=/auth/update-password`,
       });
+      if (error)
+        console.error("auth_recovery_request_failed", {
+          reason: "auth_email_delivery_or_request_failed",
+          status: error.status,
+        });
       return {
         message:
           "If an account exists, a password reset link has been sent to your work email.",
@@ -75,6 +80,13 @@ export async function authenticate(
         return {
           error: "Password could not be updated. Request a new reset link.",
         };
+      const access = await db.rpc("get_access_context");
+      if (access.data?.recovery_required) {
+        await db.auth.signOut({ scope: "local" });
+        return {
+          message: "Password updated. Sign in again with your new password.",
+        };
+      }
       return { message: "Password updated. You can return to the dashboard." };
     }
   } catch (error) {
@@ -92,6 +104,7 @@ export async function authenticate(
 }
 export async function logout() {
   const db = await createClient();
+  await db.rpc("end_role_preview");
   await db.auth.signOut();
   redirect("/login");
 }

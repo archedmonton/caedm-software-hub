@@ -1,5 +1,9 @@
 import { spawn } from "node:child_process";
-import { localConfig, localEmailHookSecret } from "./local-config.mjs";
+import {
+  localConfig,
+  localEmailHookSecret,
+  localResendWebhookSecret,
+} from "./local-config.mjs";
 const config = localConfig();
 const port = process.env.PORT || "3100";
 const child = spawn(
@@ -17,6 +21,9 @@ const child = spawn(
       APP_URL: `http://localhost:${port}`,
       EMAIL_PROVIDER: "local",
       SUPABASE_SEND_EMAIL_HOOK_SECRET: localEmailHookSecret,
+      RESEND_WEBHOOK_SECRET: localResendWebhookSecret,
+      DEVELOPER_EMAIL: process.env.DEVELOPER_EMAIL || "ruban.peppin@caedm.ca",
+      DEVELOPER_NAME: process.env.DEVELOPER_NAME || "Ruban Peppin",
       CRON_SECRET:
         process.env.CRON_SECRET ||
         "local-development-job-secret-at-least-32-characters",

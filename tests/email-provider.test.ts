@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-const transport = vi.hoisted(() => ({ sendMail: vi.fn() }));
+const transport = vi.hoisted(() => ({ sendMail: vi.fn(), close: vi.fn() }));
 vi.mock("nodemailer", () => ({
   default: { createTransport: vi.fn(() => transport) },
 }));
@@ -21,6 +21,8 @@ beforeEach(() => {
   vi.stubEnv("EMAIL_PROVIDER", "resend");
   vi.stubEnv("RESEND_API_KEY", "unit-test-api-key");
   vi.stubEnv("EMAIL_FROM", "Legacy sender <notifications@caedm.ca>");
+  vi.stubEnv("SMTP_HOST", "");
+  vi.stubEnv("EMAIL_SMTP_FALLBACK", "true");
   api.mockReset().mockImplementation(
     async () =>
       new Response(JSON.stringify({ id: "accepted-unit-test" }), {
@@ -126,4 +128,37 @@ test("production cannot fall back to the local mail provider", () => {
   vi.stubEnv("EMAIL_PROVIDER", "local");
   vi.stubEnv("NODE_ENV", "production");
   expect(() => emailProvider()).toThrow("Configure an email provider");
+});
+test("explicit Resend rejection uses bounded TLS SMTP fallback without exposing provider errors", async () => {
+  vi.stubEnv("SMTP_HOST", "mail2.caedm.ca");
+  api.mockResolvedValueOnce(new Response("private", { status: 429 }));
+  const receipt = await emailProvider().send(message);
+  expect(receipt?.providerId).toMatch(/^smtp:/);
+  expect(transport.sendMail).toHaveBeenCalledTimes(1);
+  expect(transport.sendMail.mock.calls[0][0].from.address).toBe(
+    "notifications@caedm.ca",
+  );
+});
+test("uncertain outcomes never cross providers, even when SMTP is configured", async () => {
+  vi.stubEnv("SMTP_HOST", "mail2.caedm.ca");
+  for (const result of [
+    new Response("oops", { status: 500 }),
+    new Response("{}", { status: 200 }),
+    new Response("conflict", { status: 409 }),
+  ]) {
+    api.mockResolvedValueOnce(result);
+    await expect(emailProvider().send(message)).rejects.toThrow();
+  }
+  api.mockRejectedValueOnce(new Error("timeout"));
+  await expect(emailProvider().send(message)).rejects.toThrow();
+  expect(transport.sendMail).not.toHaveBeenCalled();
+});
+test("fallback can be disabled and never runs after primary acceptance", async () => {
+  vi.stubEnv("SMTP_HOST", "mail2.caedm.ca");
+  await emailProvider().send(message);
+  expect(transport.sendMail).not.toHaveBeenCalled();
+  vi.stubEnv("EMAIL_SMTP_FALLBACK", "false");
+  api.mockResolvedValueOnce(new Response("no", { status: 403 }));
+  await expect(emailProvider().send(message)).rejects.toThrow();
+  expect(transport.sendMail).not.toHaveBeenCalled();
 });

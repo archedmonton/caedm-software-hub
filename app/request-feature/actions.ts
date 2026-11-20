@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { session } from "@/lib/auth";
+import { developer } from "@/lib/developer";
 import {
   eligibleFeatureRequester,
   featureRequestInput,
@@ -52,8 +53,8 @@ export async function submitFeatureRequest(
     delivery: receipt.delivery_status,
     success:
       receipt.delivery_status === "sent"
-        ? "Your request has been saved and sent to Ruban Peppin for review."
-        : "Your request has been saved and queued for email delivery to Ruban Peppin. Check Your recent requests for delivery status.",
+        ? `Your request has been saved and sent to ${developer.name} for review.`
+        : `Your request has been saved and queued for email delivery to ${developer.name}. Check Your recent requests for delivery status.`,
   };
 }
 export async function retryFeatureRequest(
@@ -81,7 +82,7 @@ export async function retryFeatureRequest(
     };
   revalidatePath("/request-feature");
   return data.status === "sent"
-    ? { success: "The request email has been sent to Ruban Peppin." }
+    ? { success: `The request email has been sent to ${developer.name}.` }
     : data.status === "sending"
       ? {
           success:

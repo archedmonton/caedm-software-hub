@@ -1,5 +1,4 @@
 import { adminRole, financeRole, type Profile } from "@/lib/domain";
-import { developer } from "@/lib/developer";
 export type HelpCategory =
   | "Getting started"
   | "Roles & access"
@@ -89,6 +88,48 @@ export const roleCapabilities = [
   },
 ] as const;
 export const helpArticles: HelpArticle[] = [
+  {
+    id: "assisted-recovery",
+    category: "Roles & access",
+    title: "How can I recover an account when reset emails do not arrive?",
+    summary:
+      "A Developer or Super Admin can prepare a private one-time recovery link after verifying the employee’s identity.",
+    steps: [
+      "First use Forgot password and check your work mailbox and junk folder. Never share your password with support. A generic reset confirmation does not prove that an email reached your inbox.",
+      "If email is unavailable, contact IT or a Developer/Super Admin. Authorized operators open Account Recovery from the workspace or Developer Tools, select the employee, verify their identity, enter their own current password and enrolled/required authenticator code, then prepare a link.",
+      "Preparing the link restricts the employee’s workspace access until the password is changed. Share the link privately through an approved channel. It expires after 15 minutes, is single-use and is displayed for that operation only. A replacement invalidates the previous assisted link. Never put recovery links in tickets or shared messages.",
+      "The employee opens the complete link, chooses and confirms a private password, then signs in again. The administrator never chooses or sees that password. Previous workspace sessions remain blocked. Roles, verification, approval, department access and financial history are preserved.",
+      "If a link expires or preparation fails, request a replacement after one minute or use the ordinary reset email. The account remains restricted until its password is changed. Super Admin, Developer, protected and MFA-enabled accounts require IT-assisted recovery; operators cannot recover their own account here.",
+      "Recovery activity is audited without passwords or tokens. Essential security notices are queued even if software notifications are disabled. Email delivery still depends on configured providers and the account-email scheduler.",
+    ],
+  },
+  {
+    id: "about-releases",
+    category: "Getting started",
+    title: "Where can I find the version and release history?",
+    summary:
+      "About shows the current application version, release status, build and configured developer contact.",
+    steps: [
+      "Choose About in the sidebar. The version beside its label comes from the application package metadata.",
+      "Prepared releases are awaiting approval. A release date is shown only when it has been assigned; a local development build has no invented deployment commit.",
+      "Use Copy full SHA when reporting an issue in a deployed build. Release history explains features, improvements and relevant migration notes in plain language.",
+    ],
+  },
+  {
+    id: "developer-tools",
+    category: "Roles & access",
+    title: "What is Developer access, and how does role preview work?",
+    summary:
+      "Developer is a separate, explicitly authorized designation. It never grants an organization role or department membership.",
+    steps: [
+      "An authorized Developer can use Developer Tools outside role preview. Super Admin status or a matching contact email alone does not grant Developer access.",
+      "View as Role temporarily narrows your own permissions for up to 30 minutes in the current signed-in session. The gold banner identifies the preview and lets you return to your actual view. You never impersonate another employee.",
+      "Changes made during preview affect real records and are audited under your actual identity. Developer actions remain unavailable until you leave preview.",
+      "Announcements require a saved preview, a test accepted by the provider, a reviewed unique recipient count and confirmation. Email Outbox distinguishes queued, accepted, provider-confirmed delivered, failed and skipped results.",
+      "Developer grants and revocations require a fresh password and configured authenticator code. You cannot revoke yourself or the recorded primary developer. Primary handover additionally requires successor verification, matching deployment configuration and explicit database-operator authorization.",
+      "Primary developer handover preserves existing Developer assignments and organization roles. The separately pinned protected Super Admin identity does not transfer through a contact change.",
+    ],
+  },
   {
     id: "email-senders",
     category: "Getting started",
@@ -504,7 +545,8 @@ export const helpArticles: HelpArticle[] = [
     id: "support",
     category: "Getting started",
     title: "What should I send when asking for help?",
-    summary: `Contact ${developer.name}, ${developer.title}, at ${developer.email} with enough detail to reproduce the issue.`,
+    summary:
+      "Contact the configured Software Hub developer with enough detail to reproduce the issue. The current contact is shown in Help.",
     steps: [
       "Include the page name, the action you were trying to complete, the time, and the exact error message.",
       "For missing records, mention the expected department and software name. Your role and department may limit what you can see.",
@@ -516,11 +558,12 @@ export const helpArticles: HelpArticle[] = [
     id: "feature-request",
     category: "Getting started",
     title: "How do I request a feature or contact the developer?",
-    summary: `For a hand with Software Hub, contact ${developer.name} at ${developer.email}.`,
+    summary:
+      "For a hand with Software Hub, use the current developer contact shown in Help.",
     steps: [
       "Choose Request a Feature in Help to open the professional request form. Sign in with a verified CAEDM account; active employees and employees awaiting approval are eligible.",
       "Give the request a clear title and explain the problem, proposed improvement, expected benefit and priority. Your verified name and email are included automatically.",
-      "Your request is saved and queued for a background email to Ruban for review. Refresh Your recent requests to check delivery. Failed emails retry automatically; you can also queue a retry after at least one minute. You can submit up to five requests per hour, with up to five email attempts per request.",
+      "Your request is saved and queued for a background email to the configured developer for review. Refresh Your recent requests to check delivery. Failed emails retry automatically; you can also queue a retry after at least one minute. You can submit up to five requests per hour, with up to five email attempts per request.",
       "Keep your request reference for follow-up. Please do not include passwords, invitation links or confidential financial information.",
     ],
   },
@@ -549,6 +592,16 @@ export function visibleHelpArticles(role?: Profile["role"]) {
   );
 }
 export function helpContext(path: string) {
+  if (
+    path.startsWith("/account-recovery") ||
+    path.startsWith("/auth/assisted-recovery") ||
+    path.startsWith("/auth/recovery-required")
+  )
+    return { id: "assisted-recovery", page: "secure account recovery" };
+  if (path.startsWith("/about"))
+    return { id: "about-releases", page: "About and release history" };
+  if (path.startsWith("/developer"))
+    return { id: "developer-tools", page: "Developer Tools" };
   if (path.startsWith("/request-feature"))
     return { id: "feature-request", page: "requesting a feature" };
   if (path.startsWith("/accept-invitation"))

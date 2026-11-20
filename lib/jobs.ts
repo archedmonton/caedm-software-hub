@@ -48,8 +48,9 @@ export async function runReminders() {
           : `Usage confirmation: ${n.software_name}`;
     const text = `Hello ${n.full_name},\n\n${n.kind === "response" ? "A usage response is ready for Finance to review." : "Please review whether this software is still needed."}\n\nSoftware: ${n.software_name}\nRenewal: ${n.renewal_date}\nDecision deadline: ${n.deadline}\nBilling amount: ${money(cents(n.amount), n.currency)} ${n.currency}\n\nOpen the authenticated review page: ${origin}/reviews/${n.review_id}\n\nThis request does not cancel any subscription with a vendor.\n\nManage your software email notifications: ${origin}/settings#notifications\nCAEDM Software Hub`;
     let successful = false;
+    let deliveredBy = provider.name;
     try {
-      await provider.send({
+      const receipt = await provider.send({
         id: n.id,
         to: n.email,
         subject,
@@ -59,6 +60,7 @@ export async function runReminders() {
             ? "approvals"
             : "notifications",
       });
+      deliveredBy = receipt?.provider || provider.name;
       successful = true;
     } catch {
       /* Persist a safe error without SMTP credentials or vendor responses. */
@@ -67,7 +69,7 @@ export async function runReminders() {
       notification: n.id,
       token: n.claim_token,
       successful,
-      email_provider: provider.name,
+      email_provider: deliveredBy,
       email_subject: subject,
       email_body: text,
     });
@@ -92,8 +94,14 @@ export async function runReminders() {
     for (const n of billing as BillingNotification[]) {
       const message = billingReminderMessage(n, origin);
       let successful = false;
+      let deliveredBy = provider.name;
       try {
-        await provider.send({ id: n.id, to: n.email, ...message });
+        const receipt = await provider.send({
+          id: n.id,
+          to: n.email,
+          ...message,
+        });
+        deliveredBy = receipt?.provider || provider.name;
         successful = true;
       } catch {
         /* Persist safe failure details only. */
@@ -104,7 +112,7 @@ export async function runReminders() {
           notification: n.id,
           token: n.claim_token,
           successful,
-          email_provider: provider.name,
+          email_provider: deliveredBy,
           email_subject: message.subject,
           email_body: message.text,
         },

@@ -1,5 +1,11 @@
 "use client";
-import { useState, useTransition, useRef, useEffect } from "react";
+import {
+  useState,
+  useTransition,
+  useRef,
+  useEffect,
+  useSyncExternalStore,
+} from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -124,6 +130,13 @@ export function SimpleForm({
   confirm?: boolean;
   label?: string;
 }) {
+  // Prevent a native GET submission before React attaches access confirmation
+  // and server-action handling. This also makes early clicks safe on slow devices.
+  const hydrated = useSyncExternalStore(
+    subscribeHydration,
+    clientHydrated,
+    serverHydrated,
+  );
   const [result, setResult] = useState<Result>({});
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -147,7 +160,12 @@ export function SimpleForm({
     >
       {children}
       <Feedback result={result} />
-      <Button disabled={pending}>{pending ? "Saving…" : label}</Button>
+      <Button disabled={!hydrated || pending}>
+        {pending ? "Saving…" : label}
+      </Button>
     </form>
   );
 }
+const subscribeHydration = () => () => {};
+const clientHydrated = () => true;
+const serverHydrated = () => false;

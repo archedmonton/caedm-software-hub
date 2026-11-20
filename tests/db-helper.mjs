@@ -5,6 +5,12 @@ export async function database(options = {}) {
   await db.exec(
     `create role anon;create role authenticated;create role service_role bypassrls;create role supabase_auth_admin;create schema auth;create table auth.users(id uuid primary key,email text not null,email_confirmed_at timestamptz,raw_user_meta_data jsonb default '{}',raw_app_meta_data jsonb default '{}',encrypted_password text default '');create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated,anon,service_role;grant execute on function auth.uid() to authenticated,anon,service_role;grant usage on schema public to authenticated,anon,service_role,supabase_auth_admin;`,
   );
+  await db.exec(
+    "create table auth.mfa_factors(id uuid primary key default gen_random_uuid(),user_id uuid references auth.users(id),status text);",
+  );
+  await db.exec(
+    "create table auth.sessions(id uuid primary key default gen_random_uuid(),user_id uuid references auth.users(id),created_at timestamptz default now());",
+  );
   for (const file of (await readdir("supabase/migrations"))
     .filter(
       (f) =>
@@ -57,4 +63,22 @@ export async function asUser(db, id, fn) {
       `reset role;select set_config('request.jwt.claim.sub','',false);`,
     );
   }
+}
+// New security suites isolate each test in a transaction. A rejected statement is
+// rolled back to its savepoint so subsequent independent assertions remain usable.
+export function recoverRejectedStatements(db) {
+  const query = db.query.bind(db);
+  db.query = async (...args) => {
+    await db.exec("savepoint security_assertion");
+    try {
+      const result = await query(...args);
+      await db.exec("release savepoint security_assertion");
+      return result;
+    } catch (error) {
+      await db.exec(
+        "rollback to savepoint security_assertion; release savepoint security_assertion",
+      );
+      throw error;
+    }
+  };
 }

@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 // Public test fixture, used only after validating the loopback Supabase target.
 // Never configure this value in a hosted deployment.
 export const localEmailHookSecret = `v1,whsec_${Buffer.from("local-only-email-hook-test-key-32").toString("base64")}`;
+export const localResendWebhookSecret = `whsec_${Buffer.from("local-only-resend-webhook-test-32").toString("base64")}`;
 export function localConfig() {
   const output = execFileSync(
     process.execPath,

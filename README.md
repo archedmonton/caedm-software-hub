@@ -1,8 +1,20 @@
 # CAEDM Software Hub
 
+## Version 1.0.0 and Developer Tools
+
+The November 16 repository audit found Next.js App Router, Supabase SSR, four organization roles, UUID-pinned developer Super Admin protection, signed-in RLS business queries, separate notification/feature/account queues and the existing Resend/SMTP transport. There is no About page, developer designation, preview session, announcement composer, semantic package version, release tag or historical changelog. No CLAUDE.md exists. The Dashboard/Settings cards, typography, burgundy navigation and gold accents are retained.
+
+The earlier Resend source commit **09ff615** deliberately skipped Vercel. The approved 1.0.0 release supersedes that source-only checkpoint and includes the recovery, developer governance and announcement changes below.
+
+Version 1.0.0 adds an authenticated About page and validated release metadata, Developer assignments independent of organization roles, session-bound downward role previews enforced by RLS, personalized announcements with mandatory preview/test/confirmation, a unified outbox, fresh-password/MFA guarded Developer access changes and operator-witnessed primary handover. Production rollout was explicitly approved after local review.
+
+The older Git history reliably establishes feature milestones (MVP 293a4fb; invitations 697832a; branding eb86c6f; protected Super Admin f275fe4; inline editing 5ce033f; notifications c457609; Dashboard/Settings 3f16d97). It does not establish published semantic release boundaries or release dates. The prepared baseline must not present those commits as invented numbered releases. A production release date is assigned only when preparing the approved release.
+
 Internal software stewardship for the Catholic Archdiocese of Edmonton. Built with Next.js App Router, strict TypeScript, React, Tailwind, shadcn/ui, Supabase PostgreSQL/Auth/SSR, Zod, React Hook Form, TanStack Table, Recharts, date-fns, ExcelJS, Nodemailer, Vitest, and Playwright.
 
 ## Run locally
+
+The About/Developer Tools feature, migration review, release process, explicit Developer bootstrap, password/MFA controls, primary handover and announcement-worker activation are documented in [docs/developer-tools.md](docs/developer-tools.md).
 
 Requires Node.js 22.12+ (tested with Node 24), npm, and Docker Desktop running Linux containers.
 
@@ -103,6 +115,14 @@ For Resend production delivery, follow the release checklist below. Legacy SMTP 
 
 ## Resend delivery and purpose-specific senders
 
+### Recovery and delivery release (November 20)
+
+Verified locally on November 18, 2026: **143 unit tests, 142 database tests and all 38 browser workflows passed**, with no browser skips. Release validation, TypeScript, ESLint and the production build passed. The Resend key passed a read-only API check without sending mail. The hook signing secret has since been configured for the approved rollout. On November 20 the missing production migrations were applied and previously applied migration history was reconciled against the actual catalog. Review screenshots and recovery security-email previews in `.artifacts/recovery-review/index.html`.
+
+The release adds **Account Recovery** for actual Super Admins and independently authorized Developers. Fresh password/MFA verification, identity confirmation, a private one-use 15-minute link, forced password selection before workspace access, previous-session restrictions, audit and queued security notices are included. Protected/Developer/Super Admin/MFA accounts use IT recovery. See [recovery and delivery documentation](docs/account-recovery-and-delivery.md) for exact permissions, failure handling and activation. No real account has been reset as a deployment test.
+
+Set `EMAIL_PROVIDER=resend` for primary delivery and `EMAIL_SMTP_FALLBACK=true` with the existing authorized Exchange configuration for bounded fallback after explicit primary rejection. Uncertain timeouts/server failures stay with Resend idempotent retries to avoid crossing providers after possible acceptance. The Supabase Send Email hook must also be configured for verification/reset mail; the Vercel API key alone does not switch Auth delivery. Worker activity records the actual accepting provider. Existing queue pacing is preserved, successful primary sends avoid SMTP handshakes, and fallback uses the remaining request budget.
+
 `EMAIL_PROVIDER=resend` sends through **https://api.resend.com/emails**, with no connection to the Exchange SMTP endpoint. The application selects senders from `lib/email-senders.ts`; employee-supplied content cannot choose a From address. All six use the display name **CAEDM Software Hub**:
 
 | Purpose               | Sender                   | Current workflow                                                                               |
@@ -116,7 +136,7 @@ For Resend production delivery, follow the release checklist below. Legacy SMTP 
 
 Resend does not create Outlook mailboxes or aliases. Configure monitored aliases or use the existing developer Reply-To. Ordinary notices retain developer support; feature requests retain the verified requester's Reply-To. Have IT maintain the verified domain's SPF/DKIM/DMARC configuration and **disable open/click tracking for transactional authentication and invitation links**. Provider acceptance is not proof of inbox delivery: monitor Resend delivery/bounce events and test with intended recipients before rollout. No inbox placement guarantee is made.
 
-The transport keeps inline CID logos, HTML/plain text, deterministic Message-ID and an API idempotency key based on the logical message and exact payload. Identical retries within Resend's 24-hour retention use the same key; a rotated invitation gets a fresh key. Existing database claims/retry limits remain authoritative beyond that window. Requests have bounded timeouts and redirects are refused. Each process spaces requests below two/second; separate Vercel instances still share the provider's quota, so monitor 429 responses and size capacity appropriately. Queued jobs retain failures for retry. Logs contain only provider, purpose, safe reason and HTTP status, never addresses, content, keys, tokens or raw provider responses. There is no automatic fallback from a failed Resend request to SMTP, avoiding ambiguous duplicate delivery.
+The transport keeps inline CID logos, HTML/plain text, deterministic Message-ID and an API idempotency key based on the logical message and exact payload. Identical retries within Resend's 24-hour retention use the same key; a rotated invitation gets a fresh key. Existing database claims/retry limits remain authoritative beyond that window. Requests have bounded timeouts and redirects are refused. Each process spaces requests below two/second; separate Vercel instances still share the provider's quota, so monitor 429 responses and size capacity appropriately. Queued jobs retain failures for retry. Logs contain only provider, purpose, safe reason and HTTP status, never addresses, content, keys, tokens or raw provider responses. Configured SMTP fallback is limited to explicit rejection; uncertain outcomes never cross providers. Review the recovery/delivery guide for SMTP acknowledgment limitations.
 
 ### Authentication without SMTP
 
@@ -137,7 +157,7 @@ Configure an authorized scheduler to **POST `/api/jobs/account-emails` every fiv
 ### Resend production release checklist
 
 1. Review and apply **202611120001_account_email_notifications.sql** to the explicitly selected Software Hub Supabase project, after all earlier migrations. This adds no financial-data rewrite or role changes. Never seed a hosted project.
-2. In Vercel **Production**, set EMAIL_PROVIDER=resend, RESEND_API_KEY, the existing HTTPS APP_URL, public Supabase settings, service credential and CRON_SECRET. Resend ignores legacy EMAIL_FROM/SMTP_* settings; retain them only for an intentional rollback. Configure a sending-only key scoped to verified caedm.ca where available. Enter API keys as literal values without dotenv quotes in Vercel.
+2. In Vercel **Production**, set EMAIL_PROVIDER=resend, RESEND_API_KEY, the existing HTTPS APP_URL, public Supabase settings, service credential and CRON_SECRET. Configure EMAIL_SMTP_FALLBACK=true and retain authorized EMAIL_FROM/SMTP_* settings for the bounded fallback described above, or disable fallback explicitly. Configure a sending-only key scoped to verified caedm.ca where available. Enter API keys as literal values without dotenv quotes in Vercel.
 3. Deploy the reviewed code. Confirm `/api/auth/send-email` rejects unsigned requests with 401 (503 until the hook secret is configured). This endpoint must be reachable by Supabase without interactive Vercel Deployment Protection.
 4. In the **selected Supabase project → Authentication → Hooks**, add an **HTTP Send Email** hook targeting `https://caedm-software-hub.vercel.app/api/auth/send-email`. Copy its generated signing secret directly into Vercel's SUPABASE_SEND_EMAIL_HOOK_SECRET. Redeploy to load it, then enable the hook. Keep the Email provider enabled; an enabled Send Email hook replaces Auth SMTP delivery. Keep the existing before-user-created hook and exact redirect allowlist.
 5. Configure the protected five-minute account-email scheduler (and existing feature-request scheduler). Retain the daily software reminder schedule. Monitor safe runtime diagnostics, worker results and Resend delivery logs.
@@ -276,6 +296,8 @@ Finance Centre is labelled **Beta** in desktop/mobile navigation, the section he
 Unique review/recipient/message constraints and transaction locks prevent normal duplicate messages. Workers claim rows with `FOR UPDATE SKIP LOCKED`, maintain a 30-minute lease, and use a claim token when saving delivery state. Each attempt is retained. Failed messages retry up to five attempts. Investigate exhausted failures before any operator intervention. SMTP cannot guarantee exactly-once delivery if a process dies after the mail server accepts a message but before the database records success; deterministic Message-ID helps downstream deduplication. Configure SMTP timeouts and monitor notification failures. Do not run jobs more frequently merely to compensate for an uninvestigated provider failure.
 
 ## Verification
+
+Prepared Developer Tools verification on November 16, 2026: release validation, TypeScript and ESLint passed; **133 unit tests**, **130 database tests** and **37 real local-Supabase browser workflows** passed; the production build passed on patched **Next.js 16.4.5**. The production dependency audit reported zero vulnerabilities. All new migrations and access fixtures were exercised locally only; no production migration, user change, live email campaign, push or deployment was performed for this feature. Review [Developer Tools documentation](docs/developer-tools.md) for activation steps and the distinction between local signed-event tests and a future controlled live Resend/MFA smoke test.
 
 Last verified locally on November 12, 2026: TypeScript and ESLint passed; 108 unit tests, 101 database tests, and all 32 real local-Supabase browser workflows passed; the production build passed. The two new email browser workflows also passed after the final email-copy update. All fifteen migrations are applied to the local project only. Resend transport tests cover all six senders, inline logos, idempotency, provider/quota/network failures and safe diagnostics. Signed-hook tests cover forged/expired signatures, rotation, payload limits, security events and token-hash mapping. Real local Auth tokens verify cross-browser signup/reset without granting approval. Account queue tests cover permissions, leases, retries, rollback, invitation suppression and superseded approvals. Desktop/mobile email previews were visually reviewed. No live recipient email was sent, no hosted migration was applied and no deployment was performed. The API's read-only response identifies the configured key as sending-only; actual Resend acceptance and inbox delivery still require a controlled deployment test. Existing Dashboard/Settings, Finance, references, notifications and role-protection workflows remain covered. Local fixture cleanup preserves historical records and production protections.
 

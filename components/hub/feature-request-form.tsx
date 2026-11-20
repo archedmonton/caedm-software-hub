@@ -8,7 +8,7 @@ import {
   type FeatureRequestState,
 } from "@/app/request-feature/actions";
 import { featureAreas, featurePriorities } from "@/lib/feature-request-content";
-import { developer } from "@/lib/developer";
+import { useDeveloperContact } from "@/components/hub/developer-contact";
 
 export function FeatureRequestForm({
   requestKey,
@@ -41,6 +41,7 @@ function RequestForm({
   email: string;
   startAnother: () => void;
 }) {
+  const developer = useDeveloperContact();
   const [state, action, pending] = useActionState<
     FeatureRequestState,
     FormData

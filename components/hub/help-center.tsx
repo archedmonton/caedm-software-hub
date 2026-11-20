@@ -10,9 +10,10 @@ import {
 import { roles, roleLabels } from "@/lib/domain";
 import type { Profile } from "@/lib/domain";
 import Link from "next/link";
-import { developer } from "@/lib/developer";
+import { useDeveloperContact } from "@/components/hub/developer-contact";
 
 export function HelpCenter({ role }: { role?: Profile["role"] }) {
+  const developer = useDeveloperContact();
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -243,10 +244,17 @@ export function HelpCenter({ role }: { role?: Profile["role"] }) {
             <p>
               <strong>{developer.name}</strong> / {developer.title}
             </p>
-            <a href={`mailto:${developer.email}`}>{developer.email}</a>
+            {developer.email ? (
+              <a href={`mailto:${developer.email}`}>{developer.email}</a>
+            ) : (
+              <p>
+                Developer contact is not configured. Contact your workspace
+                administrator.
+              </p>
+            )}
             <p>
-              Need a hand? Contact Ruban with the page and error message. Keep
-              passwords and invitation links private.
+              Need a hand? Contact the developer with the page and error
+              message. Keep passwords and invitation links private.
             </p>
             <Link
               href="/request-feature"

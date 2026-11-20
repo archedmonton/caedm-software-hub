@@ -6,7 +6,12 @@ import { brandedNotice } from "@/lib/email-template";
 export type AccountNotice = {
   id: string;
   claim_token: string;
-  kind: "approval" | "access_changed" | "role_changed";
+  kind:
+    | "approval"
+    | "access_changed"
+    | "role_changed"
+    | "recovery_started"
+    | "recovery_completed";
   email: string;
   full_name: string;
   before_role: string;
@@ -28,6 +33,30 @@ const labels: Record<string, string> = {
 };
 const label = (value: string) => labels[value] || value;
 export function accountEmailMessage(n: AccountNotice, origin: string) {
+  if (n.kind === "recovery_started" || n.kind === "recovery_completed")
+    return {
+      id: `account-${n.id}`,
+      to: n.email,
+      purpose: "security" as const,
+      ...brandedNotice({
+        title:
+          n.kind === "recovery_started"
+            ? "Account recovery was started"
+            : "Your account password was reset",
+        paragraphs: [
+          `Hello ${n.full_name},`,
+          n.kind === "recovery_started"
+            ? "An authorized Developer or Super Admin started assisted recovery for your account. Workspace access is restricted until you choose a new password. The recovery link will be shared privately after identity verification."
+            : "Your password was changed after assisted account recovery. Sign in again using your new password. Previous workspace sessions are restricted.",
+          "If you did not request this change, contact IT immediately. No password or recovery link is included in this notice.",
+        ],
+        details: [["Recorded at", n.created_at]],
+        action: {
+          label: "Open Software Hub",
+          url: `${new URL(origin).origin}/login`,
+        },
+      }),
+    };
   const roleChanged = n.kind === "role_changed";
   return {
     id: `account-${n.id}`,
@@ -82,8 +111,10 @@ export async function runAccountEmails() {
   const result = { sent: 0, failed: 0 };
   for (const notice of data as AccountNotice[]) {
     let successful = false;
+    let deliveredBy = provider.name;
     try {
-      await provider.send(accountEmailMessage(notice, origin));
+      const receipt = await provider.send(accountEmailMessage(notice, origin));
+      deliveredBy = receipt?.provider || provider.name;
       successful = true;
     } catch {
       /* Safe diagnostics are emitted by the email transport. */
@@ -94,7 +125,7 @@ export async function runAccountEmails() {
         notification: notice.id,
         token: notice.claim_token,
         successful,
-        email_provider: provider.name,
+        email_provider: deliveredBy,
       },
     );
     if (finishError || !saved)

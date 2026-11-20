@@ -17,10 +17,14 @@ export async function GET(request: NextRequest) {
     .select("role,status,email")
     .eq("id", user.id)
     .single();
+  const { data: access, error: accessError } =
+    await db.rpc("get_access_context");
   if (
     !user.email_confirmed_at ||
     profile?.status !== "active" ||
-    !financeRole(profile.role) ||
+    accessError ||
+    !access?.effective_role ||
+    !financeRole(access.effective_role) ||
     profile.email.toLowerCase() !== user.email?.toLowerCase() ||
     user.email?.toLowerCase().split("@")[1] !== "caedm.ca"
   )

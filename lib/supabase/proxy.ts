@@ -6,7 +6,8 @@ export async function updateSession(request: NextRequest) {
   if (
     !configured() ||
     request.nextUrl.pathname.startsWith("/api/jobs") ||
-    request.nextUrl.pathname === "/api/auth/send-email"
+    request.nextUrl.pathname === "/api/auth/send-email" ||
+    request.nextUrl.pathname === "/api/webhooks/resend"
   )
     return response;
   const { url, key } = publicConfig();

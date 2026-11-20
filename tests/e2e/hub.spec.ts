@@ -1,11 +1,14 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
 import { Webhook } from "standardwebhooks";
-import { localEmailHookSecret } from "../../scripts/local-config.mjs";
+import {
+  localEmailHookSecret,
+  localResendWebhookSecret,
+} from "../../scripts/local-config.mjs";
 
 async function openReference(page: Page, field: string, title: string) {
   const dropdown = page.getByRole("combobox", { name: field, exact: true });
@@ -112,6 +115,53 @@ test.beforeAll(async () => {
       )
       .in("role", ["admin", "finance", "super_admin"])
       .not("id", "in", `(${Object.values(ids).join(",")})`),
+  );
+  // Explicit loopback-only operator fixture. Preserve any existing primary and
+  // protected developer identity; only this run's synthetic account is designated.
+  execFileSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      "supabase_db_caedm-software-hub",
+      "psql",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+      "-v",
+      "ON_ERROR_STOP=1",
+    ],
+    {
+      input: `insert into private.developer_access(profile_id) values('${ids.super_admin}') on conflict(profile_id) do update set active=true; insert into private.developer_governance(singleton,primary_id) values(true,'${ids.super_admin}') on conflict(singleton) do update set primary_id=excluded.primary_id where exists(select 1 from public.profiles p where p.id=private.developer_governance.primary_id and p.email ~ '^e2e-super-admin-[0-9]+@caedm[.]ca$');`,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    },
+  );
+});
+test.afterAll(() => {
+  if (!ids.super_admin) return;
+  // Restore only synthetic Developer fixture state. Keep identities, audit and
+  // all financial history; never touch an existing real primary/protected user.
+  execFileSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      "supabase_db_caedm-software-hub",
+      "psql",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+      "-v",
+      "ON_ERROR_STOP=1",
+    ],
+    {
+      input: `delete from private.developer_governance where primary_id='${ids.super_admin}'; update private.developer_access set active=false where profile_id in ('${ids.super_admin}','${ids.staff}');`,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    },
   );
 });
 test("public routes are responsive and restricted endpoints reject anonymous access", async ({
@@ -3080,4 +3130,342 @@ test("account approval and privilege notices retain access controls and use thei
     headers: { Authorization: `Bearer ${cron}` },
   });
   expect(await quiet.json()).toEqual({ sent: 0, failed: 0 });
+});
+
+test("About displays a truthful release baseline for all four organization roles", async ({
+  page,
+}) => {
+  // Separate the extended browser scenario from the original suite's login
+  // quota. Reset only these synthetic accounts' loopback test counters.
+  const keys = Object.values(emails).map(
+    (email) => `auth:${createHash("sha256").update(email).digest("hex")}`,
+  );
+  execFileSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      "supabase_db_caedm-software-hub",
+      "psql",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+      "-v",
+      "ON_ERROR_STOP=1",
+    ],
+    {
+      input: `delete from private.rate_limits where key in (${keys.map((key) => `'${key}'`).join(",")});`,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    },
+  );
+  for (const role of ["staff", "finance", "admin", "super_admin"] as const) {
+    await login(page, role);
+    await page.goto("/about");
+    await expect(
+      page.getByRole("heading", { name: "CAEDM Software Hub", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator(".release-version")).toContainText("1.0.0");
+    await expect(page.getByText("Prepared · not released")).toBeVisible();
+    await expect(
+      page.getByText("Development build · deployment metadata unavailable"),
+    ).toBeVisible();
+  }
+  await mkdir(".artifacts/developer-review", { recursive: true });
+  await page.screenshot({
+    path: ".artifacts/developer-review/about-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: ".artifacts/developer-review/about-mobile.png",
+    animations: "disabled",
+    fullPage: true,
+  });
+  const pendingEmail = `e2e-about-pending-${suffix}@caedm.ca`;
+  await checked(
+    await admin.auth.admin.createUser({
+      email: pendingEmail,
+      password: secret,
+      email_confirm: true,
+      user_metadata: { full_name: "About Pending Employee" },
+    }),
+  );
+  await page.goto("/login");
+  await page.getByLabel("Work email").fill(pendingEmail);
+  await page.getByLabel("Password", { exact: true }).fill(secret);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/pending-approval/);
+  await page.goto("/about");
+  await expect(page.locator(".release-version")).toContainText("1.0.0");
+  await expect(
+    page.getByRole("link", { name: "Software Inventory", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    (
+      await page.request.get("/api/exports?report=register&format=csv")
+    ).status(),
+  ).toBe(403);
+});
+test("Developer navigation is hidden and direct access denied without designation", async ({
+  page,
+  request,
+}) => {
+  await login(page, "staff");
+  await expect(
+    page.getByRole("link", { name: "Developer Tools", exact: true }),
+  ).toHaveCount(0);
+  await page.goto("/developer/access");
+  await expect(page).toHaveURL(/dashboard/);
+  expect((await request.post("/api/jobs/announcements")).status()).toBe(401);
+  expect(
+    (await request.post("/api/webhooks/resend", { data: {} })).status(),
+  ).toBe(401);
+});
+test("Developer preview restricts real RLS, preserves identity and returns to actual view", async ({
+  page,
+}) => {
+  await login(page, "super_admin");
+  await page.goto("/developer");
+  await page.screenshot({
+    path: ".artifacts/developer-review/developer-overview.png",
+    fullPage: true,
+  });
+  await page.goto("/developer?tab=preview");
+  await expect(
+    page.getByRole("heading", {
+      name: "View the workspace with fewer permissions",
+    }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: ".artifacts/developer-review/role-preview.png",
+    animations: "disabled",
+    fullPage: true,
+  });
+  await page.getByLabel("Preview role", { exact: true }).selectOption("staff");
+  await page.getByRole("button", { name: "Start restricted preview" }).click();
+  await expect(page.locator(".preview-banner")).toContainText("Staff");
+  expect(
+    (
+      await page.request.get("/api/exports?report=register&format=csv")
+    ).status(),
+  ).toBe(403);
+  await expect(page.getByRole("link", { name: "Finance Centre" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("link", { name: "Developer Tools", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator(".sidebar-user")).toContainText(
+    "Super Admin account",
+  );
+  await page.screenshot({
+    path: ".artifacts/developer-review/preview-banner.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Return to My View" }).click();
+  await expect(page.locator(".preview-banner")).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Developer Tools", exact: true }),
+  ).toBeVisible();
+});
+test("Developer access requires fresh password and leaves the actor session and target role unchanged", async ({
+  page,
+}) => {
+  await login(page, "super_admin");
+  await page.goto("/developer/access");
+  await page.getByLabel("Choose an eligible employee").selectOption(ids.staff);
+  await page.getByRole("button", { name: "Review grant" }).click();
+  let dialog = page.getByRole("dialog");
+  await dialog
+    .getByLabel("Confirm your current password")
+    .fill("wrong-password");
+  await dialog.getByRole("button", { name: "Confirm grant" }).click();
+  await expect(page.locator(".developer-page [role=alert]")).toContainText(
+    "Password verification failed",
+  );
+  await page.getByRole("button", { name: "Review grant" }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Confirm your current password").fill(secret);
+  await dialog.getByRole("button", { name: "Confirm grant" }).click();
+  await expect(page.locator(".developer-page .success")).toContainText(
+    "Developer access updated",
+  );
+  const profile = await checked(
+    await admin.from("profiles").select("role").eq("id", ids.staff).single(),
+  );
+  expect(profile?.role).toBe("staff");
+  await page.reload();
+  await page.screenshot({
+    path: ".artifacts/developer-review/developer-access.png",
+    fullPage: true,
+  });
+  await page.goto("/developer?tab=handover");
+  await expect(
+    page.getByRole("heading", { name: "Primary developer handover" }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: ".artifacts/developer-review/handover.png",
+    fullPage: true,
+  });
+  await page.goto("/developer/access");
+  await page.getByLabel("Choose an eligible employee").selectOption(ids.staff);
+  await page.getByRole("button", { name: "Review revocation" }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Confirm your current password").fill(secret);
+  await dialog.getByRole("button", { name: "Confirm revocation" }).click();
+  await expect(page.locator(".developer-page .success")).toContainText(
+    "Developer access updated",
+  );
+});
+test("announcement preview, test, confirmation and bounded delivery use real local accounts and Mailpit", async ({
+  page,
+  request,
+}) => {
+  await login(page, "super_admin");
+  await page.goto("/developer?tab=announcements");
+  await page.getByLabel("Audience", { exact: true }).selectOption("selected");
+  await page
+    .locator(".recipient-picker label")
+    .filter({ hasText: emails.staff })
+    .getByRole("checkbox")
+    .check();
+  await page
+    .getByLabel("Email subject", { exact: true })
+    .fill(`Developer announcement ${suffix}`);
+  await page.getByRole("button", { name: "Save & preview" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Email preview", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Review & send to 1 people" }),
+  ).toBeDisabled();
+  await page.screenshot({
+    path: ".artifacts/developer-review/announcement-composer.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Send Test to Me", exact: true })
+    .click();
+  await expect(page.locator(".developer-page .success")).toContainText(
+    "Test accepted by the email provider",
+  );
+  const testMail = await capturedAccountEmail(
+    emails.super_admin,
+    `[TEST] Developer announcement ${suffix}`,
+  );
+  expect(testMail.Text).toContain("Hi Test,");
+  expect(testMail.From.Address).toBe("notifications@caedm.ca");
+  await page.getByRole("button", { name: "Review & send to 1 people" }).click();
+  const dialog = page.getByRole("dialog", { name: "Send Announcement?" });
+  await expect(dialog).toContainText("1 CAEDM recipients");
+  await dialog.getByRole("button", { name: "Send to 1 People" }).click();
+  await expect(page.locator(".developer-page .success")).toContainText(
+    "1 individual messages saved",
+  );
+  const response = await request.post("/api/jobs/announcements", {
+    headers: {
+      Authorization: `Bearer ${process.env.CRON_SECRET || "local-development-job-secret-at-least-32-characters"}`,
+    },
+  });
+  expect(response.status()).toBe(200);
+  expect((await response.json()).accepted).toBe(1);
+  const finalMail = await capturedAccountEmail(
+    emails.staff,
+    `Developer announcement ${suffix}`,
+  );
+  expect(finalMail.Text).not.toContain("TEST EMAIL");
+  expect(finalMail.Text).toContain("Software Hub helps us");
+  await page.goto("/developer?tab=outbox");
+  await page
+    .getByRole("button", { name: "Announcements", exact: true })
+    .click();
+  await expect(
+    page.getByRole("cell", { name: "accepted", exact: true }).first(),
+  ).toBeVisible();
+  // Simulate a signed provider event only for this local fixture's captured
+  // message. No provider API or hosted database is used.
+  const receipt = JSON.parse(
+    execFileSync(
+      "docker",
+      [
+        "exec",
+        "-i",
+        "supabase_db_caedm-software-hub",
+        "psql",
+        "-U",
+        "postgres",
+        "-d",
+        "postgres",
+        "-At",
+        "-v",
+        "ON_ERROR_STOP=1",
+      ],
+      {
+        input: `select json_build_object('delivery_ref',r.delivery_ref,'id',r.id) from private.announcement_recipients r join public.developer_announcements a on a.id=r.announcement_id where a.subject='Developer announcement ${suffix}' and r.email='${emails.staff}' and not r.is_test;`,
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    ).trim(),
+  );
+  const eventTime = new Date();
+  const eventId = `local-delivery-${suffix}`;
+  const eventBody = JSON.stringify({
+    type: "email.delivered",
+    created_at: eventTime.toISOString(),
+    data: {
+      email_id: `local-provider-${receipt.id}`,
+      tags: { delivery_ref: receipt.delivery_ref },
+    },
+  });
+  const delivered = await request.post("/api/webhooks/resend", {
+    headers: {
+      "svix-id": eventId,
+      "svix-timestamp": String(Math.floor(eventTime.getTime() / 1000)),
+      "svix-signature": new Webhook(localResendWebhookSecret).sign(
+        eventId,
+        eventTime,
+        eventBody,
+      ),
+      "Content-Type": "application/json",
+    },
+    data: eventBody,
+  });
+  expect(delivered.status()).toBe(200);
+  expect((await delivered.json()).recorded).toBe(true);
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Announcements", exact: true })
+    .click();
+  await expect(
+    page.getByRole("cell", { name: "delivered", exact: true }).first(),
+  ).toBeVisible();
+  await page.screenshot({
+    path: ".artifacts/developer-review/email-outbox.png",
+    fullPage: true,
+  });
+  await page
+    .locator(".developer-table-wrap a")
+    .filter({ hasText: `Developer announcement ${suffix}` })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Saved message" }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: ".artifacts/developer-review/announcement-detail.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });

@@ -14,6 +14,9 @@ import {
   LogOut,
   Menu,
   ArrowUpRight,
+  Info,
+  Wrench,
+  ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
 import type { Profile } from "@/lib/domain";
@@ -22,6 +25,8 @@ import { logout } from "@/app/auth/actions";
 import { Brand } from "@/components/hub/brand";
 import { HelpCenter } from "@/components/hub/help-center";
 import { BetaPill } from "@/components/hub/beta-pill";
+import { endPreview } from "@/app/developer-actions";
+import type { AccessContext } from "@/lib/auth";
 const navigation = [
   ["Dashboard", "/dashboard", LayoutDashboard],
   ["Software Inventory", "/software", Layers3],
@@ -30,23 +35,40 @@ const navigation = [
   ["Finance Centre", "/finance", ChartNoAxesCombined],
   ["Team Management", "/team", Users],
   ["Settings", "/settings", Settings],
+  ["About", "/about", Info],
+  ["Developer Tools", "/developer", Wrench],
+  ["Account Recovery", "/account-recovery", ShieldCheck],
 ] as const;
 export function Shell({
   profile,
   notifications,
+  actualRole,
+  access,
+  version,
   children,
 }: {
   profile: Profile;
   notifications: number;
+  actualRole: Profile["role"];
+  access: AccessContext;
+  version: string;
   children: React.ReactNode;
 }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  const items = navigation.filter(
-    (item) =>
-      (item[1] !== "/finance" || financeRole(profile.role)) &&
-      (item[1] !== "/team" || adminRole(profile.role)),
-  );
+  const items = navigation
+    .filter(
+      (item) =>
+        (item[1] !== "/finance" || financeRole(profile.role)) &&
+        (item[1] !== "/team" || adminRole(profile.role)),
+    )
+    .filter((item) => item[1] !== "/developer" || access.tools_allowed)
+    .filter(
+      (item) =>
+        item[1] !== "/account-recovery" ||
+        (!access.preview_role &&
+          (access.tools_allowed || actualRole === "super_admin")),
+    );
   const active = navigation.find((item) => path.startsWith(item[1]));
   return (
     <div className="workspace">
@@ -69,6 +91,9 @@ export function Shell({
             >
               <Icon size={18} />
               <span>{label}</span>
+              {href === "/about" && (
+                <span className="nav-version">v{version}</span>
+              )}
               {href === "/finance" && <BetaPill />}
               {href === "/reviews" && notifications > 0 && (
                 <span className="nav-count">{notifications}</span>
@@ -90,7 +115,12 @@ export function Shell({
             </span>
             <div>
               <strong>{profile.full_name}</strong>
-              <span>{roleLabels[profile.role]} workspace</span>
+              <span>
+                {roleLabels[actualRole]} account
+                {access.preview_role
+                  ? ` · ${roleLabels[profile.role]} preview`
+                  : ""}
+              </span>
             </div>
             <form action={logout}>
               <button aria-label="Sign out" title="Sign out">
@@ -108,6 +138,24 @@ export function Shell({
         />
       )}
       <div className="workspace-main">
+        {access.preview_role && (
+          <div className="preview-banner" role="status">
+            <div>
+              <strong>
+                You’re viewing CAEDM Software Hub as{" "}
+                {roleLabels[access.preview_role]}.
+              </strong>
+              <p>
+                This is a restricted preview. Your actual account and
+                permissions have not changed. Changes you make are real and
+                attributed to your account.
+              </p>
+            </div>
+            <form action={endPreview}>
+              <button>Return to My View</button>
+            </form>
+          </div>
+        )}
         <header className="topbar">
           <div className="flex items-center gap-3">
             <button
