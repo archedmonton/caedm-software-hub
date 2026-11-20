@@ -1,10 +1,10 @@
 # About, release management and Developer Tools
 
-This is a locally prepared feature. It has not been pushed or deployed. No production database, account, primary designation, email schedule or Vercel environment has been changed.
+The combined 1.0.0 release was approved for production and published to GitHub on November 20, 2026. The missing production migrations were applied after catalog checks, and the existing UUID-pinned developer was explicitly designated as primary Developer. No employee password was reset and no production announcement was sent as a rollout test.
 
 ## Version baseline and release process
 
-Before this change, package.json had no version, Git had no release tags, and there was no numbered changelog. The first formal baseline is **1.0.0**, marked **prepared**, with no invented publication date. Historical feature milestones are documented in README; they are not represented as fabricated releases.
+Before this change, package.json had no version, Git had no release tags, and there was no numbered changelog. The first formal baseline is **1.0.0**, dated **November 20, 2026** for the approved production release. Historical feature milestones are documented in README; they are not represented as fabricated releases.
 
 package.json is the application version source. src/lib/releases.ts holds the corresponding typed notes. `npm run validate:releases` checks semantic versions, agreement, uniqueness, order, dates and required metadata. Both `check` and `build` run it. Before an approved release, update both sources, assign the genuine publication date and status, validate and review. Do not increment for every development commit. About reads the actual Vercel build SHA or explicitly identifies a development build. It is available to authenticated accounts, including accounts awaiting approval, without granting workspace access.
 
@@ -73,6 +73,8 @@ Email Outbox combines available queue metadata from announcements, usage reviews
 Keep RESEND_API_KEY, CRON_SECRET and RESEND_WEBHOOK_SECRET in server-only hosting secret storage. Use the canonical HTTPS APP_URL. Authorize notifications@caedm.ca and security-alerts@caedm.ca on the verified sending domain. The current key was identified as sending-only in prior read-only testing; a controlled real acceptance/delivery test remains necessary after deployment approval.
 
 Schedule authenticated POST `/api/jobs/announcements` every five minutes using `Authorization: Bearer <CRON_SECRET>` and monitor failures/backlog. Existing reminder, feature-request and account-notice schedules remain separate. Send Test to Me invokes only a bounded test-recipient delivery through that same protected worker; without working worker configuration it stays queued and does not unlock bulk sending. Ensure hosting permits this authenticated same-origin worker call; deployment protection may require its configured server-side bypass or an accessible canonical production origin.
+
+For the selected CAEDM production project, the reviewed operator script [email-delivery-schedules.sql](../supabase/operations/email-delivery-schedules.sql) uses Supabase Cron and pg_net to POST the account, feature and announcement queues every five minutes. Store the exact existing Vercel CRON_SECRET in Supabase Vault as `caedm_software_hub_cron_secret` before activating it. The cron command contains only a restricted private function call; the credential is read from Vault during dispatch. Keep the existing Vercel daily reminder schedule. After credential rotation, update Vault and check HTTP results in `net._http_response` as an operator. A successful cron dispatch only enqueues HTTP requests; verify their HTTP status separately.
 
 Configure a Resend webhook to HTTPS `/api/webhooks/resend`, set RESEND_WEBHOOK_SECRET, and subscribe to email.delivered, email.bounced, email.complained, email.suppressed and email.failed. Verification uses the raw bounded body and signed svix headers. Unsupported events are acknowledged without business queries. Database storage failures return 503 so Resend can retry. All test mail during development is captured by local Mailpit; no production recipients were contacted.
 
