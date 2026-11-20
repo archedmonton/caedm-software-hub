@@ -5,6 +5,10 @@ import { randomBytes, createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
 import { Webhook } from "standardwebhooks";
+import { readFileSync } from "node:fs";
+const metadata = JSON.parse(
+  readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+);
 import {
   localEmailHookSecret,
   localResendWebhookSecret,
@@ -217,10 +221,10 @@ test("real signup email verification leads to pending approval and no business d
       return Boolean(html);
     })
     .toBe(true);
-  const match = html.match(/https?:[^\s"<>]+\/auth\/v1\/verify[^\s"<>]+/);
+  const match = html.match(/https?:[^\s"<>]+\/auth\/confirm[^\s"<>]+/);
   expect(match).toBeTruthy();
   const link = new URL(match![0].replaceAll("&amp;", "&"));
-  const token = link.searchParams.get("token");
+  const token = link.searchParams.get("token_hash");
   expect(token).toBeTruthy();
   await page.goto(match![0].replaceAll("&amp;", "&"));
   await expect(page).toHaveURL(/pending-approval/);
@@ -514,7 +518,7 @@ test("password reset email works for a verified pending account without granting
   await page.goto("/forgot-password");
   await page.getByLabel("Work email").fill(email);
   await page.getByRole("button", { name: "Send reset link" }).click();
-  await expect(page.getByRole("status")).toContainText("If an account exists");
+  await expect(page.getByRole("status")).toContainText("Request received");
   let html = "";
   await expect
     .poll(async () => {
@@ -537,23 +541,35 @@ test("password reset email works for a verified pending account without granting
       return Boolean(html);
     })
     .toBe(true);
-  const match = html.match(/https?:[^\s"<>]+\/auth\/v1\/verify[^\s"<>]+/);
+  const match = html.match(/https?:[^\s"<>]+\/reset-password#[^\s"<>]+/);
   expect(match).toBeTruthy();
   const link = new URL(match![0].replaceAll("&amp;", "&"));
-  const token = link.searchParams.get("token");
+  const token = new URLSearchParams(link.hash.slice(1)).get("token_hash");
   expect(token).toBeTruthy();
-  await page.goto(
-    `/auth/confirm?type=recovery&token_hash=${encodeURIComponent(token!)}`,
+  expect(token).toMatch(/^pkce_/);
+  // Opening the email in another browser must not depend on the requesting
+  // browser's PKCE verifier cookie, and a scanner GET must not spend the token.
+  await page.context().clearCookies();
+  expect((await page.request.get(link.origin + link.pathname)).status()).toBe(
+    200,
   );
+  await page.goto(link.href);
   await expect(
-    page.getByRole("heading", { name: "Choose a new password" }),
+    page.getByRole("heading", { name: "Choose your new password" }),
   ).toBeVisible();
   const replacement = secret + "Updated9";
   await page.getByLabel("New password", { exact: true }).fill(replacement);
-  await page.getByLabel("Confirm password").fill(replacement);
-  await page.getByRole("button", { name: "Update password" }).click();
-  await expect(page.getByRole("status")).toContainText("Password updated");
-  await page.goto("/dashboard");
+  await page.getByLabel("Confirm new password").fill(replacement);
+  await page.getByRole("button", { name: "Change password" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Password changed", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("link", { name: "Sign in with your new password" })
+    .click();
+  await page.getByLabel("Work email").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(replacement);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/pending-approval/);
   const client = createClient(
     config.API_URL,
@@ -564,6 +580,10 @@ test("password reset email works for a verified pending account without granting
     (await client.auth.signInWithPassword({ email, password: replacement }))
       .error,
   ).toBeNull();
+  expect(
+    (await client.auth.verifyOtp({ type: "recovery", token_hash: token! }))
+      .error,
+  ).not.toBeNull();
   await page.goto("/auth/callback?code=invalid");
   await expect(
     page.getByRole("alert").filter({ hasText: "invalid or expired" }),
@@ -3017,18 +3037,27 @@ test("signed authentication hook delivers CAEDM verification and reset emails wi
     );
     expect(mail.From.Address).toBe("noreply@caedm.ca");
     const resetLink = mail.HTML.match(
-      /http:\/\/localhost:3100\/auth\/confirm[^"<>\s]+/,
+      /http:\/\/localhost:3100\/reset-password#[^"<>\s]+/,
     )![0].replaceAll("&amp;", "&");
     await page.goto(resetLink);
     await expect(
-      page.getByRole("heading", { name: "Choose a new password" }),
+      page.getByRole("heading", { name: "Choose your new password" }),
     ).toBeVisible();
     await page
       .getByLabel("New password", { exact: true })
       .fill(secret + "HookReset9");
-    await page.getByLabel("Confirm password").fill(secret + "HookReset9");
-    await page.getByRole("button", { name: "Update password" }).click();
-    await expect(page.getByRole("status")).toContainText("Password updated");
+    await page.getByLabel("Confirm new password").fill(secret + "HookReset9");
+    await page.getByRole("button", { name: "Change password" }).click();
+    await expect(page.getByRole("status")).toContainText("Password changed");
+    await page
+      .getByRole("link", { name: "Sign in with your new password" })
+      .click();
+    await page.getByLabel("Work email").fill(email);
+    await page
+      .getByLabel("Password", { exact: true })
+      .fill(secret + "HookReset9");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page).toHaveURL(/pending-approval/);
     await page.goto("/software");
     await expect(page).toHaveURL(/pending-approval/);
     const logo = (await readFile("lib/assets/caedm-logo.png")).toString(
@@ -3166,11 +3195,13 @@ test("About displays a truthful release baseline for all four organization roles
     await expect(
       page.getByRole("heading", { name: "CAEDM Software Hub", exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".release-version")).toContainText("1.0.0");
+    await expect(page.locator(".release-version")).toContainText(
+      metadata.version,
+    );
     await expect(page.getByText("Prepared · not released")).toBeVisible();
-    await expect(
-      page.getByText("Development build · deployment metadata unavailable"),
-    ).toBeVisible();
+    await expect(page.getByText("Build commit", { exact: true })).toHaveCount(
+      role === "super_admin" ? 1 : 0,
+    );
   }
   await mkdir(".artifacts/developer-review", { recursive: true });
   await page.screenshot({
@@ -3203,7 +3234,10 @@ test("About displays a truthful release baseline for all four organization roles
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/pending-approval/);
   await page.goto("/about");
-  await expect(page.locator(".release-version")).toContainText("1.0.0");
+  await expect(page.locator(".release-version")).toContainText(
+    metadata.version,
+  );
+  await expect(page.getByText("Build commit", { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "Software Inventory", exact: true }),
   ).toHaveCount(0);

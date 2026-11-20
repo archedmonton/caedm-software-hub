@@ -66,7 +66,7 @@ export async function authenticate(
         });
       return {
         message:
-          "If an account exists, a password reset link has been sent to your work email.",
+          "Request received. If this address has an account, you will receive a reset email. Check your inbox and junk folder, and use the newest email. If none arrives, contact IT or your workspace administrator.",
       };
     } else {
       const {

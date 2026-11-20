@@ -12,6 +12,7 @@ export function AssistedRecoveryForm() {
     recovery: string;
     token: string;
   } | null>(null);
+  const [emailToken, setEmailToken] = useState("");
   const [state, action, pending] = useActionState<AssistedState, FormData>(
     completeRecovery,
     {},
@@ -21,6 +22,11 @@ export function AssistedRecoveryForm() {
       const fragment = new URLSearchParams(window.location.hash.slice(1));
       const recovery = fragment.get("recovery") || "";
       const token = fragment.get("code") || "";
+      const emailHash = fragment.get("token_hash") || "";
+      if (/^(?:pkce_)?[a-f0-9]{32,128}$/i.test(emailHash)) {
+        setEmailToken(emailHash);
+        window.history.replaceState(null, "", window.location.pathname);
+      }
       if (
         /^[a-f0-9-]{36}$/.test(recovery) &&
         /^[a-f0-9]{32,128}$/.test(token)
@@ -40,16 +46,16 @@ export function AssistedRecoveryForm() {
       <section className="card mt-8">
         <h1>Choose your new password</h1>
         <p>
-          Your administrator prepared this one-time recovery link after
-          verifying your identity. Choose a private password, then sign in
-          again.
+          Choose a private password using the latest reset email, then sign in
+          again. Opening this page does not use your link; it is verified when
+          you submit your new password.
         </p>
         {state.success ? (
           <div role="status">
             <h2>Password changed</h2>
             <p>
-              Your previous workspace sessions can no longer access the
-              application.
+              Your password has been updated. Sign in with your new password to
+              continue.
             </p>
             <Link className="button" href="/login">
               Sign in with your new password
@@ -63,6 +69,7 @@ export function AssistedRecoveryForm() {
               value={capability?.recovery || ""}
             />
             <input type="hidden" name="code" value={capability?.token || ""} />
+            <input type="hidden" name="email_token" value={emailToken} />
             <p>
               Use at least 12 characters, upper and lowercase letters, and a
               number.
@@ -94,16 +101,23 @@ export function AssistedRecoveryForm() {
                 {state.error}
               </p>
             )}
-            {!capability && (
+            {!capability && !emailToken && (
               <p role="status">
-                Open the complete private link from your administrator. If you
-                refreshed this page, open the link again.
+                Open the complete link in your latest reset email. If you
+                refreshed this page, reopen that email. You can also request a
+                new link using Forgot password.
               </p>
             )}
-            <button className="button" disabled={!capability || pending}>
+            <button
+              className="button"
+              disabled={(!capability && !emailToken) || pending}
+            >
               {pending ? "Changing password…" : "Change password"}
             </button>
           </form>
+        )}
+        {!state.success && (
+          <Link href="/forgot-password">Request a new reset email</Link>
         )}
       </section>
     </main>

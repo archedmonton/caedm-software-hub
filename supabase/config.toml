@@ -30,3 +30,8 @@ enable_confirmations = true
 [auth.hook.before_user_created]
 enabled = true
 uri = "pg-functions://postgres/public/before_user_created"
+[auth.hook.send_email]
+enabled = true
+uri = "http://host.docker.internal:3100/api/auth/send-email"
+# Public loopback integration fixture; never use this signing key in production.
+secrets = "v1,whsec_bG9jYWwtb25seS1lbWFpbC1ob29rLXRlc3Qta2V5LTMy"

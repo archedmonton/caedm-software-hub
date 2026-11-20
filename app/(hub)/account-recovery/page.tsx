@@ -8,7 +8,7 @@ export default async function Page() {
       <PageHeading
         eyebrow="SECURE ACCOUNT SUPPORT"
         title="Account recovery"
-        description="Help a verified employee choose a new password when email delivery is unavailable."
+        description="Send a secure password reset email to a verified employee after confirming their identity."
       />
       <RecoveryConsole directory={directory} />
     </div>

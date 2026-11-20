@@ -66,6 +66,10 @@ export async function POST(request: Request) {
       publicConfig().url,
     );
   } catch {
+    console.error("auth_email_hook_failed", {
+      stage: "payload",
+      reason: "unsupported_or_invalid_payload",
+    });
     return failure(400, "Unsupported or invalid authentication email.");
   }
   try {

@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import {
   issueRecovery,
   type RecoveryState,
@@ -14,21 +14,21 @@ export function RecoveryConsole({
     (_previous, form) => issueRecovery({}, form),
     {},
   );
-  const [copied, setCopied] = useState(false);
   return (
     <>
       <section className="card">
-        <h2>Prepare a one-time recovery link</h2>
+        <h2>Send a password reset email</h2>
         <p>
-          Verify the employee’s identity before continuing. Share the link
-          privately through an approved channel. It expires in 15 minutes and
-          works once. The employee chooses their own password, then signs in
-          again.
+          Verify the employee’s identity before continuing. The Hub emails a
+          one-time reset link directly to their verified work address. It
+          expires in 15 minutes. The employee chooses their own password and
+          signs in again.
         </p>
         <p>
-          Preparing a link immediately restricts workspace access until the
-          password is changed. Replacing it invalidates the previous assisted
-          link. Roles, email verification and approval remain unchanged.
+          Sending a reset starts recovery and restricts workspace access until
+          the password is changed. Sending a replacement invalidates the
+          previous assisted link. Roles, email verification and approval remain
+          unchanged.
         </p>
         <form action={action} className="space-y-5">
           <label>
@@ -79,8 +79,8 @@ export function RecoveryConsole({
               value="yes"
               required
             />
-            I have verified this employee’s identity and will share the link
-            privately.
+            I have verified this employee’s identity and authorize a reset email
+            to their verified work address.
           </label>
           {state.error && (
             <p className="error notice" role="alert">
@@ -88,43 +88,18 @@ export function RecoveryConsole({
             </p>
           )}
           <button className="button" disabled={pending}>
-            {pending ? "Preparing secure link…" : "Prepare recovery link"}
+            {pending ? "Sending reset email…" : "Send reset link"}
           </button>
         </form>
-        {state.link && (
+        {state.sent && (
           <div className="notice mt-6" role="status">
-            <strong>Recovery link for {state.link.email}</strong>
+            <strong>Reset email accepted for {state.sent.email}</strong>
             <p>
-              Expires{" "}
-              {new Date(state.link.expiresAt).toLocaleTimeString("en-CA", {
-                timeZone: "America/Edmonton",
-              })}{" "}
-              (Edmonton). Displayed for this operation only. Do not put it in a
-              support ticket or a shared channel.
+              The email service accepted the reset email. Ask the employee to
+              check their inbox and junk folder and use the newest message. The
+              link expires 15 minutes after it was created. Provider acceptance
+              does not confirm inbox delivery.
             </p>
-            <label>
-              Private recovery link
-              <input
-                aria-label="Private recovery link"
-                readOnly
-                value={state.link.url}
-                onFocus={(e) => e.currentTarget.select()}
-              />
-            </label>
-            <button
-              type="button"
-              className="button"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(state.link!.url);
-                  setCopied(true);
-                } catch {
-                  setCopied(false);
-                }
-              }}
-            >
-              {copied ? "Copied" : "Copy private link"}
-            </button>
           </div>
         )}
         <p className="mt-6">

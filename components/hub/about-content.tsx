@@ -7,7 +7,11 @@ import { releases } from "@/src/lib/releases";
 import { PageHeading } from "@/components/hub/common";
 import { CopyCommit } from "@/components/hub/copy-commit";
 import { developer } from "@/lib/developer";
-export default async function AboutPage() {
+export default async function AboutPage({
+  showTechnical = false,
+}: {
+  showTechnical?: boolean;
+}) {
   const build = buildInformation();
   return (
     <div className="readable-workspace about-page">
@@ -45,16 +49,20 @@ export default async function AboutPage() {
             <dd>Catholic Archdiocese of Edmonton</dd>
             <dt>Environment</dt>
             <dd>{build.environment}</dd>
-            <dt>Build commit</dt>
-            <dd>
-              {build.commit ? (
-                <CopyCommit sha={build.commit} />
-              ) : build.environment === "Local development" ? (
-                "Development build · deployment metadata unavailable"
-              ) : (
-                "Deployment commit metadata unavailable"
-              )}
-            </dd>
+            {showTechnical && (
+              <>
+                <dt>Build commit</dt>
+                <dd>
+                  {build.commit ? (
+                    <CopyCommit sha={build.commit} />
+                  ) : build.environment === "Local development" ? (
+                    "Development build · deployment metadata unavailable"
+                  ) : (
+                    "Deployment commit metadata unavailable"
+                  )}
+                </dd>
+              </>
+            )}
             <dt>Developer contact</dt>
             <dd>
               {developer.email ? (

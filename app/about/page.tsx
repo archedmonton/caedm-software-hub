@@ -7,7 +7,7 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 export default async function AboutPage() {
   const context = await session();
-  const content = <AboutContent />;
+  const content = <AboutContent showTechnical={context.access.tools_allowed} />;
   if (context.access.effective_role) return <HubLayout>{content}</HubLayout>;
   // About contains application metadata only. Pending/unverified authenticated
   // accounts can read it without acquiring any workspace data or permissions.

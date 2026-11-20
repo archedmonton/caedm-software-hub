@@ -36,17 +36,48 @@ beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://fixture.supabase.co");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "public-fixture");
   mock.rpc.mockReset().mockResolvedValue({ data: id });
-  mock.worker
-    .mockReset()
-    .mockResolvedValue({
-      data: { profile_id: id, sealed_token: "ciphertext" },
-    });
+  mock.worker.mockReset().mockResolvedValue({
+    data: { profile_id: id, sealed_token: "ciphertext" },
+  });
   mock.otp.mockReset().mockResolvedValue({ data: { user: { id } } });
   mock.update.mockReset().mockResolvedValue({});
   mock.out.mockReset().mockResolvedValue({});
   mock.limit.mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => vi.unstubAllEnvs());
+test("a PKCE email reset verifies the token on password submission and always signs out", async () => {
+  const f = form();
+  f.set("email_token", `pkce_${"c".repeat(56)}`);
+  mock.otp.mockResolvedValue({
+    data: { user: { id, email_confirmed_at: "2026-11-20" } },
+  });
+  expect(await completeRecovery({}, f)).toEqual({ success: true });
+  expect(mock.otp).toHaveBeenCalledWith({
+    type: "recovery",
+    token_hash: `pkce_${"c".repeat(56)}`,
+  });
+  expect(mock.worker).not.toHaveBeenCalled();
+  expect(mock.out).toHaveBeenCalledWith({ scope: "local" });
+  expect(JSON.stringify(mock.limit.mock.calls)).not.toContain("pkce_");
+});
+test("expired email tokens cannot update passwords; a rejected update ends the recovery session", async () => {
+  const f = form();
+  f.set("email_token", "c".repeat(56));
+  mock.otp.mockResolvedValue({
+    error: { message: "expired" },
+    data: { user: null },
+  });
+  expect((await completeRecovery({}, f)).error).toContain("expired");
+  expect(mock.update).not.toHaveBeenCalled();
+  mock.otp.mockResolvedValue({
+    data: { user: { id, email_confirmed_at: "2026-11-20" } },
+  });
+  mock.update.mockResolvedValue({ error: { message: "same password" } });
+  expect((await completeRecovery({}, f)).error).toContain(
+    "could not be changed",
+  );
+  expect(mock.out).toHaveBeenCalledWith({ scope: "local" });
+});
 test("invalid/expired/replaced code cannot create an Auth session or reach the recovery worker", async () => {
   mock.rpc.mockResolvedValue({ data: null });
   expect((await completeRecovery({}, form())).error).toContain(

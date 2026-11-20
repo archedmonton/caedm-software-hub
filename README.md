@@ -1,5 +1,9 @@
 # CAEDM Software Hub
 
+## Prepared 1.0.1 recovery refinement
+
+Prepared for a GitHub-only push with `[skip vercel]`: accept Supabase `pkce_` recovery hashes, send authorized console resets directly by email, provide a scanner-safe `/reset-password` landing page, audit recovery email acceptance/failure and restrict About's Git details to Developers. Production activation remains pending. Apply `202611200001_recovery_email_audit.sql` before deployment. See [recovery findings and flow](docs/account-recovery-and-delivery.md). A real approved test was accepted by Resend but bounced with `550 5.7.1 Sender ID (PRA) Not Permitted`; see the [IT handoff](docs/mail-delivery-it-handoff.md). Do not equate API acceptance or domain verification with inbox delivery.
+
 ## Version 1.0.0 and Developer Tools
 
 The November 16 repository audit found Next.js App Router, Supabase SSR, four organization roles, UUID-pinned developer Super Admin protection, signed-in RLS business queries, separate notification/feature/account queues and the existing Resend/SMTP transport. There is no About page, developer designation, preview session, announcement composer, semantic package version, release tag or historical changelog. No CLAUDE.md exists. The Dashboard/Settings cards, typography, burgundy navigation and gold accents are retained.
@@ -27,6 +31,8 @@ npm run dev:local
 ```
 
 Open **http://localhost:3100**. Local Studio is at http://127.0.0.1:54323 and the email inbox is at http://127.0.0.1:54324. `dev:local` reads only this project's local Supabase CLI configuration into the child server's environment. It refuses non-local targets and leaves `.env.local` unchanged. First startup downloads Docker images. `supabase start` applies migrations and fictional seed records on a fresh database.
+
+Local Auth email uses the application's signed Send Email hook at port 3100, so keep `npm run dev:local` running during signup and password-reset tests. Its public loopback signing fixture is supplied automatically; do not copy that fixture into hosted environments. Hook-generated authentication email is captured in the local inbox alongside invitations.
 
 Register a designated `@caedm.ca` administrator through the app. Open its confirmation email in the local inbox. The account remains pending. To bootstrap it, replace the designated email in `supabase/bootstrap-admin.sql`, then execute that SQL as the database administrator in **local Studio**. The SQL refuses missing or unverified accounts. It never promotes the first registrant automatically. After signing in, assign departments and approved owners to the fictional records.
 

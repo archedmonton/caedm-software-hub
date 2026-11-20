@@ -45,7 +45,7 @@ test.beforeAll(async () => {
     }
   }
 });
-test("Super Admin prepares a private link; employee changes password; old sessions and reuse are blocked", async ({
+test("Super Admin emails a reset directly; employee changes password; old sessions and reuse are blocked", async ({
   page,
   browser,
 }) => {
@@ -78,7 +78,7 @@ test("Super Admin prepares a private link; employee changes password; old sessio
     .selectOption(people.staff.id);
   await page.getByLabel("Your current password").fill("incorrect-password");
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Prepare recovery link" }).click();
+  await page.getByRole("button", { name: "Send reset link" }).click();
   await expect(page.locator(".notice[role=alert]")).toContainText(
     "verification failed",
   );
@@ -87,18 +87,37 @@ test("Super Admin prepares a private link; employee changes password; old sessio
     .selectOption(people.staff.id);
   await page.getByLabel("Your current password").fill(secret);
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Prepare recovery link" }).click();
-  const input = page.getByRole("textbox", {
-    name: "Private recovery link",
-    exact: true,
-  });
-  await expect(input).toBeVisible();
-  const link = await input.inputValue();
-  expect(link).toContain("/auth/assisted-recovery#");
+  await page.getByRole("button", { name: "Send reset link" }).click();
+  await expect(page.getByRole("status")).toContainText("Reset email accepted");
+  await expect(
+    page.getByRole("textbox", { name: "Private recovery link", exact: true }),
+  ).toHaveCount(0);
+  let link = "";
+  await expect
+    .poll(async () => {
+      const mailbox = config.MAILPIT_URL || config.INBUCKET_URL;
+      const list = await (await fetch(`${mailbox}/api/v1/messages`)).json();
+      const message = list.messages?.find(
+        (m: { Subject: string; To: { Address: string }[] }) =>
+          m.Subject.startsWith("Reset your Software Hub password") &&
+          m.To.some((t) => t.Address === people.staff.email),
+      );
+      if (!message) return false;
+      const detail = await (
+        await fetch(`${mailbox}/api/v1/message/${message.ID}`)
+      ).json();
+      expect(detail.From.Address).toBe("noreply@caedm.ca");
+      link =
+        (detail.Text || "").match(
+          /http:\/\/localhost:3100\/reset-password#[^\s]+/,
+        )?.[0] || "";
+      return Boolean(link);
+    })
+    .toBe(true);
+  expect(link).toContain("/reset-password#");
   await page.screenshot({
     path: ".artifacts/recovery-review/console-desktop.png",
     fullPage: true,
-    mask: [input],
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
@@ -127,6 +146,8 @@ test("Super Admin prepares a private link; employee changes password; old sessio
   ).toBe(true);
   const recipient = await browser.newContext();
   const userPage = await recipient.newPage();
+  // A mailbox link scanner can visit the landing page without consuming the capability.
+  expect((await userPage.request.get(link.split("#")[0])).status()).toBe(200);
   await userPage.goto(link);
   await expect(
     userPage.getByRole("button", { name: "Change password", exact: true }),

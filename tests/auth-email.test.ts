@@ -67,10 +67,34 @@ test("signed signup and recovery hooks send from noreply with trusted token link
   const url = new URL(
     recovery.text.match(/https:\/\/caedm-software-hub[^\s]+/)![0],
   );
-  expect(url.pathname).toBe("/auth/confirm");
-  expect(url.searchParams.get("token_hash")).toBe("a".repeat(64));
-  expect(url.searchParams.get("type")).toBe("recovery");
+  expect(url.pathname).toBe("/reset-password");
+  expect(new URLSearchParams(url.hash.slice(1)).get("token_hash")).toBe(
+    "a".repeat(64),
+  );
+  expect(url.search).toBe("");
   expect(url.searchParams.has("redirect_to")).toBe(false);
+});
+test("real PKCE-prefixed recovery payloads and nullable user fields reach the provider", async () => {
+  const real = {
+    ...payload,
+    user: {
+      ...payload.user,
+      new_email: null,
+      user_metadata: { full_name: null },
+    },
+    email_data: {
+      ...payload.email_data,
+      email_action_type: "recovery",
+      token_hash: `pkce_${"b".repeat(56)}`,
+      token_new: "",
+      token_hash_new: "",
+    },
+  };
+  expect((await POST(signed(real))).status).toBe(200);
+  expect(mock.send).toHaveBeenCalledTimes(1);
+  expect(mock.send.mock.calls[0][0].text).toContain(
+    `token_hash=pkce_${"b".repeat(56)}`,
+  );
 });
 test("forged, altered, missing and expired signatures cannot send", async () => {
   const bad = [

@@ -11,6 +11,53 @@ export async function completeRecovery(
   _state: AssistedState,
   form: FormData,
 ): Promise<AssistedState> {
+  const emailToken = z
+    .string()
+    .regex(/^(?:pkce_)?[a-f0-9]{32,128}$/i)
+    .safeParse(form.get("email_token"));
+  if (emailToken.success) {
+    const chosen = password.safeParse(form.get("password"));
+    if (!chosen.success)
+      return {
+        error:
+          "Use at least 12 characters with uppercase, lowercase letters and a number.",
+      };
+    if (chosen.data !== form.get("confirmation"))
+      return { error: "Passwords do not match." };
+    try {
+      // Hash the capability before throttling; no bearer token enters durable rate-limit keys.
+      const { createHash } = await import("node:crypto");
+      await limitAuth(
+        `email-recovery:${createHash("sha256").update(emailToken.data).digest("hex")}`,
+      );
+      const db = await createClient();
+      const verified = await db.auth.verifyOtp({
+        type: "recovery",
+        token_hash: emailToken.data,
+      });
+      if (verified.error || !verified.data.user?.email_confirmed_at)
+        return {
+          error:
+            "This reset link is invalid, expired or already used. Request a new reset email.",
+        };
+      try {
+        const updated = await db.auth.updateUser({ password: chosen.data });
+        if (updated.error)
+          return {
+            error:
+              "Password could not be changed. Request a new reset email and try a different password.",
+          };
+        return { success: true };
+      } finally {
+        await db.auth.signOut({ scope: "local" });
+      }
+    } catch {
+      return {
+        error:
+          "Password reset could not be completed. Request a new reset email or contact IT.",
+      };
+    }
+  }
   const input = z
     .object({
       recovery: z.string().uuid(),

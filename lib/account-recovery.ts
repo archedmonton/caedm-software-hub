@@ -6,6 +6,8 @@ import { sealRecoveryToken } from "@/lib/recovery-capability";
 import { requireAccess } from "@/lib/auth";
 import { publicConfig, appUrl } from "@/lib/env";
 import { withFreshVerifiedPassword } from "@/lib/developer-auth";
+import { emailProvider } from "@/lib/email";
+import { brandedNotice } from "@/lib/email-template";
 export type RecoveryDirectory = {
   require_mfa: boolean;
   people: {
@@ -50,13 +52,13 @@ export async function requireRecoveryOperator() {
   }));
   return { ...context, directory };
 }
-export async function prepareAssistedRecovery(
+export async function sendAssistedRecovery(
   person: string,
   password: string,
   code: string,
 ) {
   const context = await requireRecoveryOperator();
-  let output: { url: string; expiresAt: string; email: string } | undefined;
+  let output: { expiresAt: string; email: string } | undefined;
   await withFreshVerifiedPassword(
     context,
     password,
@@ -121,19 +123,52 @@ export async function prepareAssistedRecovery(
         throw new Error(
           "Recovery link preparation expired. Retry after one minute.",
         );
-      const url = new URL("/auth/assisted-recovery", appUrl());
+      const url = new URL("/reset-password", appUrl());
       // Fragments are never sent in HTTP requests, access logs or Referer headers.
       url.hash = new URLSearchParams({
         recovery: record.id,
         code,
       }).toString();
-      output = {
-        url: url.toString(),
-        expiresAt: record.expires_at,
-        email: record.email,
-      };
+      let accepted = false;
+      let acceptingProvider: string | null = null;
+      try {
+        const provider = emailProvider({ timeoutMs: 8000 });
+        const receipt = await provider.send({
+          id: `assisted-recovery-${record.id}`,
+          to: record.email,
+          purpose: "authentication",
+          ...brandedNotice({
+            title: "Reset your Software Hub password",
+            paragraphs: [
+              `Hello ${context.directory.people.find((p) => p.id === person)?.full_name || "there"},`,
+              "Your authorized Software Hub support administrator requested a password reset after verifying your identity.",
+              "Choose your own private password using the button below, then sign in again. This link works once and expires in 15 minutes. Only the latest reset link can be used.",
+              "If you did not request help, contact IT. Never share your password or forward this email.",
+            ],
+            action: { label: "Choose a new password", url: url.href },
+          }),
+        });
+        acceptingProvider = receipt?.provider || provider.name;
+        accepted = true;
+      } catch {
+        // No reset URL, token, recipient or provider response enters logs or audit.
+      }
+      const recorded = await verified.rpc("record_account_recovery_email", {
+        recovery: record.id,
+        accepted,
+        email_provider: accepted ? acceptingProvider : null,
+      });
+      if (accepted && recorded.error)
+        throw new Error(
+          "Reset email was accepted, but its audit status could not be saved. Check email activity before sending again.",
+        );
+      if (!accepted)
+        throw new Error(
+          "Reset email could not be confirmed. The account remains restricted until the password is changed. Check email settings, then send a new reset email after one minute.",
+        );
+      output = { expiresAt: record.expires_at, email: record.email };
     },
   );
-  if (!output) throw new Error("Recovery link could not be prepared.");
+  if (!output) throw new Error("Reset email could not be prepared.");
   return output;
 }

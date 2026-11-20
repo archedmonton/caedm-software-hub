@@ -93,13 +93,13 @@ export const helpArticles: HelpArticle[] = [
     category: "Roles & access",
     title: "How can I recover an account when reset emails do not arrive?",
     summary:
-      "A Developer or Super Admin can prepare a private one-time recovery link after verifying the employee’s identity.",
+      "A Developer or Super Admin can send a one-time reset email after verifying the employee’s identity.",
     steps: [
       "First use Forgot password and check your work mailbox and junk folder. Never share your password with support. A generic reset confirmation does not prove that an email reached your inbox.",
-      "If email is unavailable, contact IT or a Developer/Super Admin. Authorized operators open Account Recovery from the workspace or Developer Tools, select the employee, verify their identity, enter their own current password and enrolled/required authenticator code, then prepare a link.",
-      "Preparing the link restricts the employee’s workspace access until the password is changed. Share the link privately through an approved channel. It expires after 15 minutes, is single-use and is displayed for that operation only. A replacement invalidates the previous assisted link. Never put recovery links in tickets or shared messages.",
-      "The employee opens the complete link, chooses and confirms a private password, then signs in again. The administrator never chooses or sees that password. Previous workspace sessions remain blocked. Roles, verification, approval, department access and financial history are preserved.",
-      "If a link expires or preparation fails, request a replacement after one minute or use the ordinary reset email. The account remains restricted until its password is changed. Super Admin, Developer, protected and MFA-enabled accounts require IT-assisted recovery; operators cannot recover their own account here.",
+      "If the email does not arrive, contact IT or a Developer/Super Admin. Authorized operators open Account Recovery, select the employee, verify their identity, enter their own current password and enrolled/required authenticator code, then choose Send reset link. The Hub emails the employee directly; no copy-and-share step is needed.",
+      "Sending the reset starts recovery and restricts workspace access until the password is changed. The emailed link expires after 15 minutes and works once. A replacement invalidates the previous assisted link. Provider acceptance confirms that the email service accepted the message, not that it reached the inbox. Check junk and contact IT if delivery fails.",
+      "The employee opens the latest email and chooses and confirms a private password, then signs in again. Opening the page does not use the link; it is verified only when the new password is submitted. The administrator never sees the password or reset capability. Previous assisted-recovery workspace sessions remain blocked. Roles, verification, approval, department access and financial history are preserved.",
+      "If a link expires or sending fails, request a replacement after one minute or use Forgot password. Use only the newest email; expired links cannot be restored. The account remains restricted until its password is changed. Super Admin, Developer, protected and MFA-enabled accounts require IT-assisted recovery; operators cannot recover their own account here.",
       "Recovery activity is audited without passwords or tokens. Essential security notices are queued even if software notifications are disabled. Email delivery still depends on configured providers and the account-email scheduler.",
     ],
   },
@@ -112,7 +112,7 @@ export const helpArticles: HelpArticle[] = [
     steps: [
       "Choose About in the sidebar. The version beside its label comes from the application package metadata.",
       "Prepared releases are awaiting approval. A release date is shown only when it has been assigned; a local development build has no invented deployment commit.",
-      "Use Copy full SHA when reporting an issue in a deployed build. Release history explains features, improvements and relevant migration notes in plain language.",
+      "Release history explains features, improvements and relevant notes. Only authorized Developers can see or copy the Git build commit; ordinary users can report the application version when asking for help.",
     ],
   },
   {
@@ -293,8 +293,9 @@ export const helpArticles: HelpArticle[] = [
       "Use Forgot password on the sign-in page to request a secure reset link.",
     steps: [
       "Enter the work email you registered with. The confirmation message does not reveal whether an account exists.",
-      "Check your inbox and junk folder. Open the latest reset email and choose a new password.",
-      "If the message does not arrive or the link has expired, contact your administrator. Resetting a password does not approve a pending or restricted account.",
+      "Check your inbox and junk folder. Open the latest reset email, enter and confirm a private password, then choose Change password. Use at least 12 characters with uppercase, lowercase letters and a number. Sign in again with the new password.",
+      "The link is checked only when you submit the new password. If you refresh the reset page, reopen the complete link from the email. Links work once; use only the newest message and never forward it or share your password.",
+      "If the message does not arrive or the link has expired, contact IT or your administrator. An authorized Developer or Super Admin can send a reset email directly after verifying your identity. Resetting a password does not approve a pending account, change your role or add department access.",
     ],
   },
   {
@@ -592,6 +593,8 @@ export function visibleHelpArticles(role?: Profile["role"]) {
   );
 }
 export function helpContext(path: string) {
+  if (path.startsWith("/reset-password"))
+    return { id: "password", page: "password recovery" };
   if (
     path.startsWith("/account-recovery") ||
     path.startsWith("/auth/assisted-recovery") ||

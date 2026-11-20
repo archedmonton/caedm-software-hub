@@ -306,3 +306,45 @@ test("only the recovery worker can read ciphertext and concurrent redemption/rei
     ).rejects.toThrow(/in progress/);
   });
 });
+test("only a freshly authenticated issuing operator can record recovery email outcomes", async () => {
+  const r = await issue();
+  await signed(ids.staff, async () => {
+    await expect(
+      db.query("select record_account_recovery_email($1,true,'resend')", [
+        r.id,
+      ]),
+    ).rejects.toThrow(/access required/);
+  });
+  await signed(
+    ids.admin,
+    async () => {
+      await expect(
+        db.query("select record_account_recovery_email($1,true,'resend')", [
+          r.id,
+        ]),
+      ).rejects.toThrow(/Fresh password/);
+    },
+    { amr: [] },
+  );
+  await signed(ids.admin, async () => {
+    await db.query("select record_account_recovery_email($1,false,null)", [
+      r.id,
+    ]);
+    await db.query("select record_account_recovery_email($1,true,'resend')", [
+      r.id,
+    ]);
+    const directory = (await db.query("select account_recovery_console() as d"))
+      .rows[0].d;
+    expect(
+      directory.history.some(
+        (h) => h.action === "account_recovery_email_failed",
+      ),
+    ).toBe(true);
+    expect(
+      directory.history.some(
+        (h) => h.action === "account_recovery_email_accepted",
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(directory)).not.toContain(hash);
+  });
+});

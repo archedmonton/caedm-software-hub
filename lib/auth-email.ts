@@ -23,11 +23,11 @@ const payloadSchema = z.object({
   user: z.object({
     id: z.string().uuid(),
     email: workEmail,
-    new_email: workEmail.optional().or(z.literal("")),
+    new_email: workEmail.nullish().or(z.literal("")),
     user_metadata: z
-      .object({ full_name: z.string().max(150).optional() })
+      .object({ full_name: z.string().max(150).nullish() })
       .passthrough()
-      .optional(),
+      .nullish(),
   }),
   email_data: z.object({
     email_action_type: z.enum(events),
@@ -35,10 +35,11 @@ const payloadSchema = z.object({
     token_hash: z.string().max(128).optional(),
     token_new: z.string().max(128).optional(),
     token_hash_new: z.string().max(128).optional(),
-    old_email: workEmail.optional().or(z.literal("")),
+    old_email: workEmail.nullish().or(z.literal("")),
   }),
 });
-const hashSchema = z.string().regex(/^[a-f0-9]{32,128}$/i);
+// Supabase prefixes PKCE signup/recovery hashes; preserve the prefix for verifyOtp.
+const hashSchema = z.string().regex(/^(?:pkce_)?[a-f0-9]{32,128}$/i);
 const securityTitles: Record<string, string> = {
   password_changed_notification: "Your password was changed",
   email_changed_notification: "Your account email was changed",
@@ -118,8 +119,15 @@ export function authEmailMessages(
     ];
   }
   const link = (hash: string | undefined, type: string) => {
-    if (["signup", "recovery", "email"].includes(type)) {
-      // Keep the existing cross-browser verifyOtp flow for registration and reset.
+    if (type === "recovery") {
+      const url = new URL("/reset-password", app.origin);
+      url.hash = new URLSearchParams({
+        token_hash: hashSchema.parse(hash),
+      }).toString();
+      return url.href;
+    }
+    if (["signup", "email"].includes(type)) {
+      // Keep the existing cross-browser verifyOtp flow for registration.
       const url = new URL("/auth/confirm", app.origin);
       url.searchParams.set("token_hash", hashSchema.parse(hash));
       url.searchParams.set("type", type);
@@ -130,7 +138,7 @@ export function authEmailMessages(
     url.searchParams.set("token", hashSchema.parse(hash));
     url.searchParams.set("type", type);
     const redirect = new URL("/auth/callback", app.origin);
-    if (type === "recovery" || type === "invite")
+    if (type === "invite")
       redirect.searchParams.set("next", "/auth/update-password");
     url.searchParams.set("redirect_to", redirect.href);
     return url.href;
@@ -183,7 +191,7 @@ export function authEmailMessages(
         paragraphs: [
           greeting,
           body,
-        "This link is personal and expires automatically. Do not forward this email.",
+          "This link is personal and expires automatically. Do not forward this email.",
         ],
         action: {
           label:

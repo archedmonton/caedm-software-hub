@@ -15,6 +15,34 @@ export type Release = {
 // Assign a real release date only when preparing an approved production release.
 export const releases: readonly Release[] = [
   {
+    version: "1.0.1",
+    releaseDate: null,
+    status: "prepared",
+    title: "Reliable password reset emails and clearer recovery",
+    summary:
+      "Password reset emails support Supabase browser recovery tokens, and authorized support staff can email a reset directly to an employee.",
+    features: [
+      "Developer and Super Admin reset emails sent directly to the employee",
+    ],
+    improvements: [
+      "One password reset page for email and assisted recovery",
+      "Clear delivery acceptance and failure messages with recovery audit history",
+    ],
+    fixes: [
+      "Accept Supabase PKCE-prefixed email tokens",
+      "Keep emailed reset links unused until a password is submitted",
+      "Provide a working /reset-password landing page",
+    ],
+    security: [
+      "Git build details are visible only to authorized Developers",
+      "Reset capabilities are no longer returned to the support operator's browser",
+      "Fresh authentication, MFA and PostgreSQL recovery restrictions remain enforced",
+    ],
+    breakingChanges: [
+      "Apply the recovery email audit migration before deploying this version. Previously issued valid assisted links remain supported.",
+    ],
+  },
+  {
     version: "1.0.0",
     releaseDate: "2026-11-20",
     status: "released",
